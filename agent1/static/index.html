@@ -1,0 +1,95 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>A2A Auth Demo</title>
+  <style>
+    body { font: 14px/1.5 system-ui, sans-serif; margin: 2rem; max-width: 1100px; }
+    h1 { font-size: 1.3rem; }
+    button { font: inherit; padding: .4rem .7rem; margin: .2rem; cursor: pointer; }
+    #trace { border-collapse: collapse; width: 100%; margin-top: 1rem; }
+    #trace th, #trace td { border: 1px solid #ccc; padding: .35rem .5rem; text-align: left; vertical-align: top; font-size: 12px; }
+    #trace th { background: #f0f0f0; }
+    .bad { background: #fde8e8; }
+    pre { background: #f7f7f7; padding: .5rem; overflow-x: auto; font-size: 11px; max-width: 480px; }
+    .row { margin: .5rem 0; }
+    code { background: #eee; padding: 0 .2rem; }
+  </style>
+</head>
+<body>
+  <h1>H2A to A2A to MCP, with user identity</h1>
+
+  <div class="row">
+    <button onclick="location.href='/login'">Login as alice</button>
+    <span id="who">not logged in</span>
+  </div>
+
+  <div class="row">
+    <input id="prompt" size="40" value="list my repos" />
+    <button onclick="ask()">Ask agent1</button>
+  </div>
+
+  <div class="row" id="answer"></div>
+  <div class="row" id="ticket"></div>
+
+  <div class="row">
+    <strong>Break it:</strong>
+    <button onclick="brk('wrong-aud')">wrong aud</button>
+    <button onclick="brk('raw-user')">raw user token</button>
+    <button onclick="brk('expired')">expired token</button>
+    <button onclick="brk('no-token')">no token</button>
+    <button onclick="brk('rogue-client')">unlisted client</button>
+  </div>
+  <div class="row" id="brkout"></div>
+
+  <h2 style="font-size:1.1rem">Token trace</h2>
+  <table id="trace"><thead><tr>
+    <th>hop</th><th>sub</th><th>actor (act.sub)</th><th>azp</th><th>aud</th><th>iss</th><th>scope</th><th>note</th><th>decoded body</th>
+  </tr></thead><tbody></tbody></table>
+
+<script>
+async function refreshWho() {
+  const r = await fetch('/whoami'); const j = await r.json();
+  document.getElementById('who').textContent = j.logged_in ? ('logged in as ' + j.user) : 'not logged in';
+}
+async function ask() {
+  const p = document.getElementById('prompt').value;
+  document.getElementById('answer').textContent = 'working...';
+  document.getElementById('ticket').innerHTML = '';
+  const r = await fetch('/ask', { method: 'POST', headers: {'content-type': 'application/x-www-form-urlencoded'}, body: 'prompt=' + encodeURIComponent(p) });
+  if (!r.ok) { document.getElementById('answer').textContent = 'error: ' + r.status + ' ' + await r.text(); refreshTrace(); return; }
+  const j = await r.json();
+  const states = j.states.map(s => s.state + (s.note ? (' - ' + s.note) : '')).join('  |  ');
+  document.getElementById('answer').innerHTML = '<strong>states:</strong> ' + states + '<br><strong>result:</strong> ' + (j.final_text || '(none)');
+  if (j.input_required && j.ticket_url) {
+    document.getElementById('ticket').innerHTML = 'GitHub consent needed: <a href="' + j.ticket_url + '" target="_blank">' + j.ticket_url + '</a> (open it, then ask again)';
+  }
+  refreshTrace();
+}
+async function brk(kind) {
+  document.getElementById('brkout').textContent = 'running ' + kind + '...';
+  const r = await fetch('/break/' + kind, { method: 'POST' });
+  const j = await r.json();
+  document.getElementById('brkout').innerHTML = '<pre>' + JSON.stringify(j.result, null, 2) + '</pre>';
+  refreshTrace();
+}
+function cell(v) { return v == null ? '' : (typeof v === 'object' ? JSON.stringify(v) : String(v)); }
+async function refreshTrace() {
+  const r = await fetch('/trace'); const j = await r.json();
+  const tb = document.querySelector('#trace tbody'); tb.innerHTML = '';
+  for (const row of j.rows) {
+    const s = row.summary || {};
+    const tr = document.createElement('tr');
+    if (!row.ok) tr.className = 'bad';
+    const actor = s.act && s.act.sub ? s.act.sub : '';
+    tr.innerHTML = '<td>' + cell(row.hop) + '</td><td>' + cell(s.sub) + '</td><td>' +
+      cell(actor) + '</td><td>' + cell(s.azp) + '</td><td>' + cell(s.aud) + '</td><td>' + cell(s.iss) +
+      '</td><td>' + cell(s.scope) + '</td><td>' + cell(row.note) +
+      '</td><td><pre>' + (Object.keys(row.body||{}).length ? JSON.stringify(row.body, null, 1) : cell(s.error)) + '</pre></td>';
+    tb.appendChild(tr);
+  }
+}
+refreshWho(); refreshTrace(); setInterval(refreshTrace, 3000);
+</script>
+</body>
+</html>

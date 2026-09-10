@@ -1,0 +1,76 @@
+# Run it with: docker compose up --build
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.3
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      # Fixed issuer so tokens read the same from the browser and from the agents.
+      KC_HOSTNAME: http://localhost:8081
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "true"
+    volumes:
+      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+    ports:
+      - "8081:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo ok >&3"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+
+  agent1:
+    build: { context: ., dockerfile: agent1/Dockerfile }
+    environment:
+      KEYCLOAK_ISSUER: http://localhost:8081/realms/a2a-demo
+      KEYCLOAK_INTERNAL_URL: http://keycloak:8080
+      KEYCLOAK_REALM: a2a-demo
+      AGENT1_CLIENT_ID: agent1-orchestrator
+      AGENT1_SECRET: ${AGENT1_SECRET}
+      AGENT1_BASE_URL: http://localhost:9001
+      AGENT2_INTERNAL_URL: http://agent2:9002
+      AGENT2_AUDIENCE: agent2-github-agent
+      SESSION_SECRET: ${SESSION_SECRET}
+      ROGUE_CLIENT_ID: rogue-agent
+      ROGUE_SECRET: rogue-dev-secret
+    ports:
+      - "9001:9001"
+    depends_on:
+      keycloak:
+        condition: service_healthy
+
+  agent2:
+    build: { context: ., dockerfile: agent2/Dockerfile }
+    environment:
+      KEYCLOAK_ISSUER: http://localhost:8081/realms/a2a-demo
+      KEYCLOAK_INTERNAL_URL: http://keycloak:8080
+      KEYCLOAK_REALM: a2a-demo
+      AGENT2_AUDIENCE: agent2-github-agent
+      AGENT2_BASE_URL: http://localhost:9002
+      ALLOWED_CALLERS: agent1-orchestrator
+      REQUIRED_SCOPE: github.act
+      AGENT2_TICKET_KEY: ${AGENT2_TICKET_KEY}
+      MCP_MODE: ${MCP_MODE:-mock}
+      MCP_MOCK_URL: http://mockmcp:9003
+      MCP_GITHUB_URL: https://api.githubcopilot.com/mcp/
+      GITHUB_APP_CLIENT_ID: ${GITHUB_APP_CLIENT_ID:-}
+      GITHUB_APP_CLIENT_SECRET: ${GITHUB_APP_CLIENT_SECRET:-}
+    volumes:
+      - agent2-data:/data
+    ports:
+      - "9002:9002"
+    depends_on:
+      keycloak:
+        condition: service_healthy
+
+  mockmcp:
+    build: { context: ., dockerfile: mockmcp/Dockerfile }
+    environment:
+      MOCKMCP_BASE_URL: http://localhost:9003
+      MOCKMCP_INTERNAL_URL: http://mockmcp:9003
+    ports:
+      - "9003:9003"
+
+volumes:
+  agent2-data:
