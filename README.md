@@ -24,15 +24,22 @@ Wait until Keycloak logs `Running the server`.
 Then:
 
 1. Open http://localhost:9001
-2. Click **Login as alice**. Sign in as `alice` / `alice`.
+2. Click **Login as alice**. Sign in as `alice` / `alice`. The button becomes
+   **Logout (alice)** once you are in.
 3. Type `list my repos` and click **Ask agent1**.
 4. The first ask shows a **GitHub consent** link (agent2 has no GitHub token for
    alice yet). Open the link, approve, close the tab.
-5. Ask again. The **token trace** panel now shows three rows:
+5. Ask again. The **token trace** panel keeps a row for every step so far -
+   login, then each ask:
    - row 1: the user token (H2A)
    - row 2: the OBO token (A2A) with `aud=agent2-github-agent` and an actor
      naming agent1
    - row 3: the GitHub token used at the MCP server
+   Click **Clear token trace** to empty the panel and start over.
+6. **Agent cards**: the two links under "Break it" open agent1's and agent2's
+   AgentCard JSON in a new tab. Agent2's is a real A2A card (`securitySchemes`,
+   `skills`). Agent1's is a plain JSON doc for comparison - agent1 is not an
+   A2A server in this demo, its `/ask` endpoint is plain REST.
 
 ## Headless check
 

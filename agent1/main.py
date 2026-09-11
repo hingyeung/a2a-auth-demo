@@ -86,10 +86,22 @@ async def callback(request: Request, code: str = "", state: str = ""):
     sess["user_token"] = user_token
     sess["user_sub"] = claims.get("sub")
     sess["user_name"] = claims.get("preferred_username")
-    trace.clear(sid)
+    # The trace is kept across steps (login, then every ask) until the user
+    # clicks "clear token trace". Login is itself one step, so it gets a row.
     trace.add(sid, "1. H2A user token (browser -> agent1)", user_token,
               note="Keycloak issued this to alice after login.")
     return RedirectResponse("/")
+
+
+@app.post("/logout")
+async def logout(request: Request):
+    sess = SESSIONS.get(_sid(request))
+    if sess:
+        sess.pop("user_token", None)
+        sess.pop("user_sub", None)
+        sess.pop("user_name", None)
+        sess.pop("obo", None)
+    return {"ok": True}
 
 
 @app.get("/whoami")
@@ -105,11 +117,10 @@ async def ask(request: Request, prompt: str = Form(...)):
     if not sess or "user_token" not in sess:
         raise HTTPException(401, "log in first")
 
-    # Rebuild the trace fresh for this ask so the panel is not a pile of repeats.
-    trace.clear(sid)
+    # Give agent2 a clean slate for this one call so its rows are only the
+    # ones this ask produces. Agent1's own trace log is never cleared here -
+    # it only grows, step by step, until the user clicks "clear token trace".
     await _reset_agent2_trace(sess.get("user_sub", ""))
-    trace.add(sid, "1. H2A user token (browser -> agent1)", sess["user_token"],
-              note="Keycloak issued this to alice after login.")
 
     try:
         obo = await exchange.obo_token(sess["user_token"])
@@ -151,6 +162,40 @@ async def _merge_agent2_trace(sid: str):
 @app.get("/trace")
 async def get_trace(request: Request):
     return {"rows": trace.get(_sid(request))}
+
+
+@app.post("/trace/clear")
+async def clear_trace(request: Request):
+    sid = _sid(request)
+    trace.clear(sid)
+    sess = SESSIONS.get(sid) or {}
+    await _reset_agent2_trace(sess.get("user_sub", ""))
+    return {"ok": True}
+
+
+@app.get("/.well-known/agent-card.json")
+async def agent1_card():
+    """agent1 is not a full A2A server (its /ask endpoint is plain REST, not
+    JSON-RPC). This card exists only so the web page can show it next to
+    agent2's real A2A card, for comparison."""
+    return {
+        "name": "Agent 1 orchestrator",
+        "description": "Logs the end user in, exchanges their token (RFC 8693), "
+                        "and calls agent2 over A2A on their behalf. Not itself an "
+                        "A2A server - /ask is a plain REST endpoint for this demo's web page.",
+        "url": os.environ["AGENT1_BASE_URL"],
+        "version": "0.1.0",
+        "capabilities": {"streaming": False, "pushNotifications": False},
+        "defaultInputModes": ["text/plain"],
+        "defaultOutputModes": ["text/plain"],
+        "skills": [{
+            "id": "ask",
+            "name": "Ask (forwards to agent2)",
+            "description": "Takes a prompt from the browser, exchanges the user's "
+                            "token, and forwards it to agent2 over A2A.",
+            "tags": ["orchestrator"],
+        }],
+    }
 
 
 # ---------------- break-it buttons ----------------

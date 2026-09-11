@@ -20,7 +20,7 @@
   <h1>H2A to A2A to MCP, with user identity</h1>
 
   <div class="row">
-    <button onclick="location.href='/login'">Login as alice</button>
+    <button id="loginBtn" onclick="toggleLogin()">Login as alice</button>
     <span id="who">not logged in</span>
   </div>
 
@@ -42,15 +42,41 @@
   </div>
   <div class="row" id="brkout"></div>
 
-  <h2 style="font-size:1.1rem">Token trace</h2>
+  <div class="row">
+    <strong>Agent cards:</strong>
+    <a href="/.well-known/agent-card.json" target="_blank">agent1 card</a>
+    &nbsp;|&nbsp;
+    <a href="http://localhost:9002/.well-known/agent-card.json" target="_blank">agent2 card</a>
+  </div>
+
+  <div class="row">
+    <h2 style="font-size:1.1rem; display:inline">Token trace</h2>
+    <button onclick="clearTrace()">Clear token trace</button>
+    <span style="font-size:12px; color:#666">kept across login and every ask, until cleared</span>
+  </div>
   <table id="trace"><thead><tr>
     <th>hop</th><th>sub</th><th>actor (act.sub)</th><th>azp</th><th>aud</th><th>iss</th><th>scope</th><th>note</th><th>decoded body</th>
   </tr></thead><tbody></tbody></table>
 
 <script>
+let loggedIn = false;
 async function refreshWho() {
   const r = await fetch('/whoami'); const j = await r.json();
-  document.getElementById('who').textContent = j.logged_in ? ('logged in as ' + j.user) : 'not logged in';
+  loggedIn = j.logged_in;
+  document.getElementById('who').textContent = loggedIn ? ('logged in as ' + j.user) : 'not logged in';
+  document.getElementById('loginBtn').textContent = loggedIn ? 'Logout (alice)' : 'Login as alice';
+}
+async function toggleLogin() {
+  if (loggedIn) {
+    await fetch('/logout', { method: 'POST' });
+    await refreshWho();
+  } else {
+    location.href = '/login';
+  }
+}
+async function clearTrace() {
+  await fetch('/trace/clear', { method: 'POST' });
+  refreshTrace();
 }
 async function ask() {
   const p = document.getElementById('prompt').value;
@@ -89,7 +115,9 @@ async function refreshTrace() {
     tb.appendChild(tr);
   }
 }
-refreshWho(); refreshTrace(); setInterval(refreshTrace, 3000);
+refreshWho(); refreshTrace();
+setInterval(refreshTrace, 3000);
+setInterval(refreshWho, 5000);
 </script>
 </body>
 </html>
