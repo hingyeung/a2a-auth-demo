@@ -50,6 +50,20 @@ def add(
         _log.setdefault(session_id, []).append(row)
 
 
+def add_precomputed(session_id: str, row: dict[str, Any]) -> None:
+    """Append a row that was already built elsewhere (e.g. copied from
+    another service's own trace log, via its /debug/trace endpoint).
+
+    That other service already ran add() with the real token and computed
+    summary/body/token_head from it. We only ever get token_head back over
+    the wire, not the raw token (see get()), so we cannot and should not
+    try to re-derive summary/body here - we just keep what it already
+    worked out, instead of re-running add() with token=None and losing it.
+    """
+    with _lock:
+        _log.setdefault(session_id, []).append(dict(row))
+
+
 def get(session_id: str) -> list[dict[str, Any]]:
     with _lock:
         return list(_log.get(session_id, []))

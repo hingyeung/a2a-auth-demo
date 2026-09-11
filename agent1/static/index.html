@@ -55,7 +55,7 @@
     <span style="font-size:12px; color:#666">kept across login and every ask, until cleared</span>
   </div>
   <table id="trace"><thead><tr>
-    <th>hop</th><th>sub</th><th>actor (act.sub)</th><th>azp</th><th>aud</th><th>iss</th><th>scope</th><th>note</th><th>decoded body</th>
+    <th>#</th><th>hop</th><th>sub</th><th>actor (act.sub)</th><th>azp</th><th>aud</th><th>iss</th><th>scope</th><th>note</th><th>decoded body</th>
   </tr></thead><tbody></tbody></table>
 
 <script>
@@ -103,17 +103,20 @@ function cell(v) { return v == null ? '' : (typeof v === 'object' ? JSON.stringi
 async function refreshTrace() {
   const r = await fetch('/trace'); const j = await r.json();
   const tb = document.querySelector('#trace tbody'); tb.innerHTML = '';
-  for (const row of j.rows) {
+  // The rows come back in the order they really happened. Number them here
+  // (not with a hardcoded prefix in the hop text) so the count always goes
+  // up, even once "MCP" rows from a second ask land after the OBO row.
+  j.rows.forEach((row, i) => {
     const s = row.summary || {};
     const tr = document.createElement('tr');
     if (!row.ok) tr.className = 'bad';
     const actor = s.act && s.act.sub ? s.act.sub : '';
-    tr.innerHTML = '<td>' + cell(row.hop) + '</td><td>' + cell(s.sub) + '</td><td>' +
+    tr.innerHTML = '<td>' + (i + 1) + '</td><td>' + cell(row.hop) + '</td><td>' + cell(s.sub) + '</td><td>' +
       cell(actor) + '</td><td>' + cell(s.azp) + '</td><td>' + cell(s.aud) + '</td><td>' + cell(s.iss) +
       '</td><td>' + cell(s.scope) + '</td><td>' + cell(row.note) +
       '</td><td><pre>' + (Object.keys(row.body||{}).length ? JSON.stringify(row.body, null, 1) : cell(s.error)) + '</pre></td>';
     tb.appendChild(tr);
-  }
+  });
 }
 refreshWho(); refreshTrace();
 setInterval(refreshTrace, 3000);

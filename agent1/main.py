@@ -88,7 +88,7 @@ async def callback(request: Request, code: str = "", state: str = ""):
     sess["user_name"] = claims.get("preferred_username")
     # The trace is kept across steps (login, then every ask) until the user
     # clicks "clear token trace". Login is itself one step, so it gets a row.
-    trace.add(sid, "1. H2A user token (browser -> agent1)", user_token,
+    trace.add(sid, "H2A user token (browser -> agent1)", user_token,
               note="Keycloak issued this to alice after login.")
     return RedirectResponse("/")
 
@@ -125,12 +125,23 @@ async def ask(request: Request, prompt: str = Form(...)):
     try:
         obo = await exchange.obo_token(sess["user_token"])
     except exchange.ExchangeError as e:
-        trace.add(sid, "2. A2A token exchange (RFC 8693)", None, note=str(e), ok=False)
-        raise HTTPException(502, f"token exchange failed: {e}")
+        # Keycloak refused to exchange this subject_token. The most common
+        # cause by far is that the cached login token went stale (usually
+        # it just expired - see README). The exact Keycloak error still
+        # goes into the trace note for anyone who wants the raw detail.
+        trace.add(sid, "A2A token exchange (RFC 8693)", None, note=str(e), ok=False)
+        sess.pop("user_token", None)
+        sess.pop("user_sub", None)
+        sess.pop("user_name", None)
+        raise HTTPException(
+            401,
+            "Your login token was refused by Keycloak (it likely expired). "
+            "Please log in again and ask right away.",
+        )
 
     obo_token = obo["access_token"]
     sess["obo"] = obo_token
-    trace.add(sid, "2. A2A OBO token (agent1 -> agent2)", obo_token,
+    trace.add(sid, "A2A OBO token (agent1 -> agent2)", obo_token,
               note="RFC 8693 exchange. aud is now agent2-github-agent.")
 
     result = await a2a_client.ask_agent2(obo_token, prompt)
@@ -154,7 +165,11 @@ async def _merge_agent2_trace(sid: str):
         async with httpx.AsyncClient(timeout=10) as hc:
             r = await hc.get(f"{AGENT2_INTERNAL}/debug/trace", params={"sub": SESSIONS[sid].get("user_sub", "")})
         for row in r.json().get("rows", []):
-            trace.add(sid, row["hop"], row.get("token"), note=row.get("note", ""), ok=row.get("ok", True))
+            # Agent2's /debug/trace never sends the raw token back over the
+            # wire, only the already-decoded summary/body and a truncated
+            # token_head. Keep that as-is instead of re-running trace.add()
+            # with no token, which would silently blank the row out.
+            trace.add_precomputed(sid, row)
     except Exception as e:  # noqa: BLE001
         trace.add(sid, "merge agent2 trace", None, note=f"could not read agent2 trace: {e}", ok=False)
 

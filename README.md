@@ -129,6 +129,27 @@ GitHub path is optional proof and is less exercised than the mock path.
   skip the browser. The teaching flow uses authorization code plus PKCE.
 - `rogue-agent` exists only to power the "unlisted client" button.
 - No push notifications, no LLM, no production secret handling.
+- Keycloak has no volume. Its realm and signing keys are ephemeral - every
+  `docker compose down` (with or without `-v`) followed by `up` starts a
+  fresh Keycloak that re-imports `realm-export.json` from scratch.
+
+## Troubleshooting: "token exchange failed" / 502 on Ask
+
+If the log shows Keycloak's `TOKEN_EXCHANGE_ERROR` with
+`reason="subject_token validation failure"`, your cached login token went
+stale before you clicked Ask - usually because the access token simply
+expired (`accessTokenLifespan` in the realm, 30 minutes by default) while
+you were doing something else between login and asking, such as setting up
+a GitHub App. It is not specific to `MCP_MODE=github`; it happens on the
+very first hop, before agent2 or MCP are ever called. Log out, log back in,
+and ask right away. Agent1 now returns a plain 401 with that explanation
+instead of a raw 502, and clears the stale session so the page's button
+flips back to "Login as alice" on its own.
+
+If you changed `keycloak/realm-export.json` (for example, to raise
+`accessTokenLifespan` further), Keycloak only re-reads it on a fresh
+import: recreate the `keycloak` container (`docker compose up -d --force-recreate keycloak`,
+or a full `down` + `up`) for the change to take effect.
 
 ## Keycloak field name
 

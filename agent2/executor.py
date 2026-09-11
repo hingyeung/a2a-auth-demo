@@ -18,8 +18,24 @@ from auth import AUDIENCE, ISSUER, JWKS_URL, current_claims
 
 
 def _pick_tool(text: str) -> tuple[str, dict]:
+    """mockmcp speaks a toy tool set (list_repos/list_issues, no args).
+
+    The real GitHub MCP server has neither tool. There is no "list my repos"
+    tool at all there - the closest is search_repositories, which requires a
+    query string. "user:@me" is GitHub search syntax for the signed-in user's
+    own repos. list_issues on the real server requires an owner/repo pair we
+    do not have from free text, so search_issues (query-only) is used for
+    "my issues" instead.
+    """
     t = text.lower()
-    if "issue" in t:
+    wants_issues = "issue" in t
+
+    if mcp_client.MODE == "github":
+        if wants_issues:
+            return "search_issues", {"query": "is:issue is:open author:@me"}
+        return "search_repositories", {"query": "user:@me"}
+
+    if wants_issues:
         return "list_issues", {}
     return "list_repos", {}
 
@@ -58,7 +74,7 @@ class GitHubAgentExecutor(AgentExecutor):
                 ),
                 final=True,
             )
-            trace.add(sub, "3. MCP: no GitHub token yet", None,
+            trace.add(sub, "MCP: no GitHub token yet", None,
                       note="agent2 returned input-required with a signed ticket link.", ok=True)
             return
 
@@ -72,7 +88,7 @@ class GitHubAgentExecutor(AgentExecutor):
 
         result = await mcp_client.call_tool(gh["access_token"], tool, args)
 
-        trace.add(sub, "3. MCP GitHub token (agent2 -> MCP server)", gh["access_token"],
+        trace.add(sub, "MCP GitHub token (agent2 -> MCP server)", gh["access_token"],
                   note=(f"user sub={sub} | tool={tool} | mode={mcp_client.MODE} | "
                         "GitHub tokens are opaque, not JWTs"),
                   ok="error" not in result)

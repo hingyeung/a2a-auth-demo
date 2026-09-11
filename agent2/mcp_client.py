@@ -41,12 +41,29 @@ async def discover() -> dict:
             # fall back to the well-known on the base host
             as_url = BASE_URL.rstrip("/")
 
-        meta_url = as_url.rstrip("/") + "/.well-known/oauth-authorization-server"
-        meta = (await hc.get(meta_url)).json()
+        as_url = as_url.rstrip("/")
+        meta_url = as_url + "/.well-known/oauth-authorization-server"
+        meta_resp = await hc.get(meta_url)
+        try:
+            meta = meta_resp.json()
+            authorization_endpoint = meta["authorization_endpoint"]
+            token_endpoint = meta["token_endpoint"]
+            registration_endpoint = meta.get("registration_endpoint")
+        except (ValueError, KeyError):
+            # This authorization server was found by discovery (the
+            # resource_metadata step above) but does not publish RFC 8414
+            # metadata at the well-known path - GitHub's does not. Fall
+            # back to GitHub's own documented endpoint names under the
+            # same base. mockmcp always has real metadata, so this branch
+            # only runs for MCP_MODE=github.
+            authorization_endpoint = f"{as_url}/authorize"
+            token_endpoint = f"{as_url}/access_token"
+            registration_endpoint = None
+
         return {
-            "authorization_endpoint": meta["authorization_endpoint"],
-            "token_endpoint": meta["token_endpoint"],
-            "registration_endpoint": meta.get("registration_endpoint"),
+            "authorization_endpoint": authorization_endpoint,
+            "token_endpoint": token_endpoint,
+            "registration_endpoint": registration_endpoint,
             "probe_status": probe.status_code,
             "www_authenticate": probe.headers.get("www-authenticate"),
         }
