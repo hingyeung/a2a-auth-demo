@@ -19,6 +19,7 @@ BASE_URL = os.environ["AGENT1_BASE_URL"]
 REDIRECT_URI = f"{BASE_URL}/callback"
 # Browser must reach these, so they use the public issuer URL.
 AUTHORIZE_URL = f"{ISSUER}/protocol/openid-connect/auth"
+LOGOUT_URL = f"{ISSUER}/protocol/openid-connect/logout"
 # Back-channel calls use the internal URL.
 TOKEN_URL = f"{INTERNAL}/realms/{REALM}/protocol/openid-connect/token"
 JWKS_URL = f"{INTERNAL}/realms/{REALM}/protocol/openid-connect/certs"
@@ -31,7 +32,7 @@ def new_pkce() -> tuple[str, str]:
     return verifier, challenge
 
 
-def authorize_url(state: str, challenge: str) -> str:
+def authorize_url(state: str, challenge: str, login_hint: str | None = None) -> str:
     q = {
         "client_id": CLIENT_ID,
         "response_type": "code",
@@ -40,7 +41,17 @@ def authorize_url(state: str, challenge: str) -> str:
         "state": state,
         "code_challenge": challenge,
         "code_challenge_method": "S256",
+        # Keycloak keeps its own SSO session in the browser, separate from
+        # agent1's. Without this, clicking Login while that session is still
+        # alice's silently hands back alice again - no form, login_hint
+        # ignored, nothing to redirect to. prompt=login forces the real
+        # credential form every time, regardless of any existing session.
+        "prompt": "login",
     }
+    if login_hint:
+        # Only prefills the username field on Keycloak's login form - the
+        # person still has to type their own password there.
+        q["login_hint"] = login_hint
     return f"{AUTHORIZE_URL}?{urlencode(q)}"
 
 

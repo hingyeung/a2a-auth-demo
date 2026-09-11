@@ -84,6 +84,12 @@
         "clientRole": false,
         "containerId": "94b97496-ab35-4672-8ffa-c904f14bbc98",
         "attributes": {}
+      },
+      {
+        "name": "github-caller",
+        "description": "May use agent2's GitHub function. Checked by agent1 before it requests the github.act scope in the token exchange.",
+        "composite": false,
+        "clientRole": false
       }
     ],
     "client": {
@@ -475,6 +481,25 @@
         }
       ],
       "realmRoles": [
+        "default-roles-a2a-demo",
+        "github-caller"
+      ]
+    },
+    {
+      "username": "bob",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "bob@example.com",
+      "firstName": "Bob",
+      "lastName": "Example",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "bob",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
         "default-roles-a2a-demo"
       ]
     }
@@ -674,7 +699,7 @@
       "attributes": {
         "realm_client": "false",
         "standard.token.exchange.enabled": "true",
-        "post.logout.redirect.uris": "+",
+        "post.logout.redirect.uris": "http://localhost:9001/*",
         "pkce.code.challenge.method": "S256"
       },
       "authenticationFlowBindingOverrides": {},
@@ -689,13 +714,14 @@
         "email"
       ],
       "optionalClientScopes": [
+        "actor.agent1",
         "address",
-        "phone",
+        "agent2-audience",
         "github.act",
+        "microprofile-jwt",
         "offline_access",
         "organization",
-        "microprofile-jwt",
-        "actor.agent1"
+        "phone"
       ]
     },
     {
@@ -862,11 +888,12 @@
       ],
       "optionalClientScopes": [
         "address",
-        "phone",
+        "agent2-audience",
         "github.act",
+        "microprofile-jwt",
         "offline_access",
         "organization",
-        "microprofile-jwt"
+        "phone"
       ]
     },
     {
@@ -1426,27 +1453,13 @@
     {
       "id": "6b7995a0-f333-4e9f-9fa2-bac42398e8c8",
       "name": "github.act",
-      "description": "Marks a token as allowed to call agent2. Adds the agent2 audience.",
+      "description": "Marks a token as carrying the caller's permission to use agent2's GitHub function. Only granted to users with the github-caller realm role.",
       "protocol": "openid-connect",
       "attributes": {
         "include.in.token.scope": "true",
         "display.on.consent.screen": "false"
       },
-      "protocolMappers": [
-        {
-          "id": "56d49418-37dd-4755-8232-beb3b26e57fc",
-          "name": "agent2-audience",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-audience-mapper",
-          "consentRequired": false,
-          "config": {
-            "included.client.audience": "agent2-github-agent",
-            "id.token.claim": "false",
-            "access.token.claim": "true",
-            "introspection.token.claim": "true"
-          }
-        }
-      ]
+      "protocolMappers": []
     },
     {
       "id": "80a0a595-d46c-41da-ab90-4e5765496a5a",
@@ -1681,6 +1694,30 @@
             "claim.name": "organization",
             "jsonType.label": "String",
             "multivalued": "true"
+          }
+        }
+      ]
+    },
+    {
+      "name": "agent2-audience",
+      "description": "Adds the agent2 audience. Requested on every exchange to agent2, regardless of whether the user has github.act - audience (who the token is for) and scope (what it is allowed to do there) are kept separate on purpose.",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "false",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "id": "56d49418-37dd-4755-8232-beb3b26e57fc",
+          "name": "agent2-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "agent2-github-agent",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true"
           }
         }
       ]

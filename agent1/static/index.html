@@ -20,7 +20,11 @@
   <h1>H2A to A2A to MCP, with user identity</h1>
 
   <div class="row">
-    <button id="loginBtn" onclick="toggleLogin()">Login as alice</button>
+    <select id="loginUser">
+      <option value="alice">alice (password: alice)</option>
+      <option value="bob">bob (password: bob) - no github.act</option>
+    </select>
+    <button id="loginBtn" onclick="toggleLogin()">Login</button>
     <span id="who">not logged in</span>
   </div>
 
@@ -63,15 +67,20 @@ let loggedIn = false;
 async function refreshWho() {
   const r = await fetch('/whoami'); const j = await r.json();
   loggedIn = j.logged_in;
-  document.getElementById('who').textContent = loggedIn ? ('logged in as ' + j.user) : 'not logged in';
-  document.getElementById('loginBtn').textContent = loggedIn ? 'Logout (alice)' : 'Login as alice';
+  const roleNote = j.logged_in ? (j.has_github_role ? ' (has github.act)' : ' (no github.act)') : '';
+  document.getElementById('who').textContent = loggedIn ? ('logged in as ' + j.user + roleNote) : 'not logged in';
+  document.getElementById('loginBtn').textContent = loggedIn ? ('Logout (' + j.user + ')') : 'Login';
+  document.getElementById('loginUser').disabled = loggedIn;
 }
-async function toggleLogin() {
+function toggleLogin() {
+  // Both are real page navigations, not background fetches - logout in
+  // particular has to redirect the browser to Keycloak's own logout
+  // endpoint so its session cookie actually gets cleared there.
   if (loggedIn) {
-    await fetch('/logout', { method: 'POST' });
-    await refreshWho();
+    location.href = '/logout';
   } else {
-    location.href = '/login';
+    const user = document.getElementById('loginUser').value;
+    location.href = '/login?user=' + encodeURIComponent(user);
   }
 }
 async function clearTrace() {

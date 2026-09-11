@@ -24,19 +24,31 @@ Wait until Keycloak logs `Running the server`.
 Then:
 
 1. Open http://localhost:9001
-2. Click **Login as alice**. Sign in as `alice` / `alice`. The button becomes
-   **Logout (alice)** once you are in.
+2. Pick `alice` in the dropdown (the default) and click **Login**. Sign in as
+   `alice` / `alice`. The button becomes **Logout (alice)** once you are in,
+   and the page shows `(has github.act)` next to her name.
 3. Type `list my repos` and click **Ask agent1**.
 4. The first ask shows a **GitHub consent** link (agent2 has no GitHub token for
    alice yet). Open the link, approve, close the tab.
 5. Ask again. The **token trace** panel keeps a row for every step so far -
    login, then each ask:
-   - row 1: the user token (H2A)
-   - row 2: the OBO token (A2A) with `aud=agent2-github-agent` and an actor
+   - the user token (H2A)
+   - the OBO token (A2A) with `aud=agent2-github-agent` and an actor
      naming agent1
-   - row 3: the GitHub token used at the MCP server
+   - the GitHub token used at the MCP server
    Click **Clear token trace** to empty the panel and start over.
-6. **Agent cards**: the two links under "Break it" open agent1's and agent2's
+6. **Now try bob.** Click **Logout**, pick `bob` in the dropdown, sign in as
+   `bob` / `bob` - the page shows `(no github.act)`. Ask the same question: it
+   comes back a plain `403`, not a crash. See
+   ["Is this user allowed to?"](#three-questions-kept-apart) below for why.
+
+   Logout matters here for a reason worth noticing: Keycloak keeps its own
+   SSO session in the browser, separate from agent1's. `/logout` is a real
+   redirect to Keycloak's own logout endpoint, not just a local "forget the
+   token" - clearing only agent1's side would leave Keycloak's session alive,
+   and the next login would silently hand back whichever user was already
+   signed in there, no matter who you picked in the dropdown.
+7. **Agent cards**: the two links under "Break it" open agent1's and agent2's
    AgentCard JSON in a new tab. Agent2's is a real A2A card (`securitySchemes`,
    `skills`). Agent1's is a plain JSON doc for comparison - agent1 is not an
    A2A server in this demo, its `/ask` endpoint is plain REST.
@@ -67,7 +79,7 @@ python3 scripts/decode.py <token>
 | `agent2/github_oauth.py` | the signed ticket that carries identity into the browser leg |
 | `agent2/mcp_client.py` | one MCP code path: 401 -> discovery -> PKCE -> token -> tool call |
 
-## Two questions, kept apart
+## Three questions, kept apart
 
 **Is this really agent1?** Three layers, all needed:
 
@@ -82,6 +94,45 @@ python3 scripts/decode.py <token>
 token that Keycloak signed and that agent2 verifies against Keycloak's JWKS.
 Agent1 cannot forge it. Identity and actor travel together in one token, and the
 receiver trusts the IdP, not the caller.
+
+**Is this user allowed to?** A third, separate question from the two above -
+alice and bob are both real, both correctly identified, but only alice may use
+agent2's GitHub function. Try it: log in as `bob` / `bob` and ask something.
+
+The realm has two users. Alice has the realm role `github-caller`. Bob does not.
+Keycloak does **not** gate an optional client scope by role on its own - if
+agent1 asked for `github.act` on bob's behalf, Keycloak would hand it over just
+as readily as it does for alice, because optional client scopes are a
+client-level grant, not a per-user one. So the decision has to be made by
+agent1, before it asks: `exchange.py` checks the logged-in user's own
+`realm_access.roles` for `github-caller` and only puts `github.act` in the
+`scope` it requests when that role is present (see
+`exchange.has_github_caller_role()`).
+
+To keep that decision testable in isolation, the audience (`aud`, "who this
+token is for") is no longer tied to the `github.act` scope. It now comes from
+its own `agent2-audience` scope, requested for every user. So bob's OBO token
+still has `aud=agent2-github-agent` and passes agent1's own allowlist and the
+signature/audience checks - it is missing exactly one thing, `github.act` in
+`scope`, and agent2's middleware rejects it for exactly that reason:
+
+```
+if REQUIRED_SCOPE not in claims.scopes:
+    return JSONResponse({"error": f"missing scope {REQUIRED_SCOPE}"}, status_code=403)
+```
+
+That check existed from the start but was never actually exercised, because
+every user got the scope. It is real now.
+
+One `a2a-sdk` quirk this ran into: the client is configured for streaming, and
+its streaming transport checks the response's `Content-Type` before it checks
+the HTTP status code. Agent2's plain JSON `403` body doesn't look like an SSE
+stream to it, so the error the SDK raises is a made-up `400` "not an SSE
+response" client error, not agent2's real `403`. Agent1 does not show that to
+the user: on any such SDK error it reissues the same call as one plain HTTP
+request (`a2a_client.raw_a2a_call`, the same path the break-it buttons use)
+and reports agent2's actual status and body instead. What the browser and the
+trace panel see is the real thing: `403 {"error":"missing scope github.act"}`.
 
 ## The `act` claim (honest note)
 
@@ -132,6 +183,13 @@ GitHub path is optional proof and is less exercised than the mock path.
 - Keycloak has no volume. Its realm and signing keys are ephemeral - every
   `docker compose down` (with or without `-v`) followed by `up` starts a
   fresh Keycloak that re-imports `realm-export.json` from scratch.
+- Whether bob gets `github.act` is decided by agent1's own code
+  (`exchange.has_github_caller_role`), not enforced by Keycloak itself.
+  Keycloak will hand out an optional client scope to any user a client asks
+  on behalf of - see "Is this user allowed to?" above. A production setup
+  would more likely use Keycloak's own Authorization Services (a
+  "token-exchange" permission on the target client) so the IdP refuses the
+  exchange outright, rather than trusting agent1 to ask nicely.
 
 ## Troubleshooting: "token exchange failed" / 502 on Ask
 

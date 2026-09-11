@@ -36,7 +36,7 @@ OBO=$(curl -s "$TOKEN_EP" \
   -d subject_token_type=urn:ietf:params:oauth:token-type:access_token \
   -d requested_token_type=urn:ietf:params:oauth:token-type:access_token \
   -d audience=agent2-github-agent \
-  -d scope="openid github.act actor.agent1" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("access_token",""))')
+  -d scope="openid agent2-audience actor.agent1 github.act" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("access_token",""))')
 [ -n "$OBO" ] || fail "token exchange returned no token"
 python3 "$HERE/decode.py" "$OBO"
 echo "$OBO" | python3 -c 'import sys,json,base64
@@ -75,11 +75,42 @@ print("ok: task state =", state, "(input-required is expected with no stored Git
 say "6. agent2 /a2a as an unlisted client -> 403"
 ROGUE=$(curl -s "$TOKEN_EP" \
   -d grant_type=client_credentials -d client_id=rogue-agent \
-  -d client_secret=rogue-dev-secret -d scope="github.act" \
+  -d client_secret=rogue-dev-secret -d scope="github.act agent2-audience" \
   | python3 -c 'import sys,json;print(json.load(sys.stdin).get("access_token",""))')
 [ -n "$ROGUE" ] || fail "no rogue token"
 code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$A2/a2a" -H "authorization: Bearer $ROGUE" -H 'content-type: application/json' -d "$REQ")
 [ "$code" = "403" ] || fail "rogue client should be 403, got $code"
 echo "ok: rogue client -> 403"
+
+say "7. bob (no github-caller role) -> OBO token with no github.act -> 403"
+BOB_UT=$(curl -s "$TOKEN_EP" \
+  -d grant_type=password -d client_id=agent1-orchestrator \
+  -d client_secret=agent1-dev-secret \
+  -d username=bob -d password=bob \
+  -d scope="openid" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("access_token",""))')
+[ -n "$BOB_UT" ] || fail "no bob user token"
+# Mirrors exactly what agent1 does for a user without the github-caller
+# role: agent2-audience and actor.agent1 are still requested (every user
+# gets a token that is FOR agent2), github.act is deliberately left out.
+BOB_OBO=$(curl -s "$TOKEN_EP" \
+  -d grant_type=urn:ietf:params:oauth:grant-type:token-exchange \
+  -d client_id=agent1-orchestrator -d client_secret=agent1-dev-secret \
+  --data-urlencode "subject_token=$BOB_UT" \
+  -d subject_token_type=urn:ietf:params:oauth:token-type:access_token \
+  -d requested_token_type=urn:ietf:params:oauth:token-type:access_token \
+  -d audience=agent2-github-agent \
+  -d scope="openid agent2-audience actor.agent1" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("access_token",""))')
+[ -n "$BOB_OBO" ] || fail "no bob OBO token"
+python3 "$HERE/decode.py" "$BOB_OBO"
+echo "$BOB_OBO" | python3 -c 'import sys,json,base64
+b=sys.stdin.read().strip().split(".")[1]; b+="="*(-len(b)%4)
+c=json.loads(base64.urlsafe_b64decode(b)); aud=c.get("aud")
+aud=[aud] if isinstance(aud,str) else (aud or [])
+assert "agent2-github-agent" in aud, "bob OBO token must still target agent2"
+assert "github.act" not in c.get("scope","").split(), "bob must NOT have github.act"
+print("ok: bob OBO aud =", aud, "scope =", c.get("scope"))'
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$A2/a2a" -H "authorization: Bearer $BOB_OBO" -H 'content-type: application/json' -d "$REQ")
+[ "$code" = "403" ] || fail "bob should be 403 (missing github.act), got $code"
+echo "ok: bob -> 403 missing scope github.act"
 
 say "ALL HOPS PASSED"
