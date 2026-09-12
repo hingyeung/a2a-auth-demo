@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #ffffff; overflow: hidden; }
+    #root { display: inline-block; }
+    #root svg { display: block; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="module">
+    // Pinned to 0.16.1: the unversioned "?bundle" import pulls in
+    // @excalidraw/mermaid-to-excalidraw, which in turn wants a
+    // @braintree/sanitize-url build that esm.sh 404s on. 0.16.1 predates
+    // that dependency and still exports exportToSvg/restoreElements, which
+    // is all this template needs. It only exposes a default export (no
+    // named exports), so pull the functions off that.
+    import EX from "https://esm.sh/@excalidraw/excalidraw@0.16.1?bundle";
+
+    window.renderDiagram = async function (jsonData) {
+      try {
+        const data = typeof jsonData === "string" ? JSON.parse(jsonData) : jsonData;
+        // restoreElements fills in the defaults (index, roundness, etc.)
+        // that hand-authored JSON may be missing.
+        const elements = EX.restoreElements(data.elements || [], null);
+        const appState = data.appState || {};
+        appState.viewBackgroundColor = appState.viewBackgroundColor || "#ffffff";
+
+        const svg = await EX.exportToSvg({
+          elements,
+          appState: { ...appState, exportBackground: true, exportWithDarkMode: false },
+          files: data.files || {},
+        });
+
+        const root = document.getElementById("root");
+        root.innerHTML = "";
+        root.appendChild(svg);
+
+        window.__renderComplete = true;
+        window.__renderError = null;
+        return { success: true, width: svg.getAttribute("width"), height: svg.getAttribute("height") };
+      } catch (err) {
+        window.__renderComplete = true;
+        window.__renderError = err.message;
+        return { success: false, error: err.message };
+      }
+    };
+
+    window.__moduleReady = true;
+  </script>
+</body>
+</html>
