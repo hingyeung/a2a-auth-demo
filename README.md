@@ -53,6 +53,15 @@ Then:
    `skills`). Agent1's is a plain JSON doc for comparison - agent1 is not an
    A2A server in this demo, its `/ask` endpoint is plain REST.
 
+## Sequence diagram: alice's auth flow
+
+![Alice's auth flow — real GitHub MCP server](diagrams/alice-github-auth-flow.png)
+
+The four phases: alice's H2A login, the A2A OBO exchange (`RFC 8693`), the
+GitHub App consent (only needed once), and the real MCP tool call. The dark
+boxes show real data - actual JWT claims, the actual `WWW-Authenticate`
+header, the actual MCP `tools/call` body. Source: `diagrams/alice-github-auth-flow.excalidraw`.
+
 ## Headless check
 
 ```bash
