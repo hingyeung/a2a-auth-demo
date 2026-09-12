@@ -10,6 +10,16 @@ Production would put Okta plus TrueFoundry in front of this. The demo removes
 that gateway so you see the raw protocol. Everything runs in local Docker
 containers. No cloud, no Terraform, no AWS.
 
+## Architecture: who talks to whom
+
+![Architecture — who talks to whom](diagrams/architecture-overview.png)
+
+Four services and one identity. Keycloak is the trust root: it mints every
+token and every hop verifies against its JWKS. Note the arc across the top -
+the browser talks straight to agent2 once, for the GitHub App consent leg.
+That is the only time agent2 faces the user, and even then it never checks a
+password. Source: `diagrams/architecture-overview.excalidraw`.
+
 ## Run it
 
 ```bash
@@ -61,6 +71,24 @@ The four phases: alice's H2A login, the A2A OBO exchange (`RFC 8693`), the
 GitHub App consent (only needed once), and the real MCP tool call. The dark
 boxes show real data - actual JWT claims, the actual `WWW-Authenticate`
 header, the actual MCP `tools/call` body. Source: `diagrams/alice-github-auth-flow.excalidraw`.
+
+Two details the diagram is deliberate about. The `sub` is a Keycloak UUID, not
+the string `alice` - the username lives in `preferred_username`, and everything
+downstream (the signed ticket, the token store) keys off the UUID. And GitHub's
+authorization server publishes no RFC 8414 metadata at the well-known path, so
+`mcp_client.discover()` falls back to `<as>/authorize` and `<as>/access_token`
+(see the comment in `agent2/mcp_client.py`).
+
+## Sequence diagram: bob's auth flow
+
+![Bob's auth flow — missing the github.act scope](diagrams/bob-auth-flow.png)
+
+The same two opening phases, ending in a `403` instead of a tool call. Bob is a
+real, correctly identified user with a valid OBO token - `aud`, `azp` and `act`
+all check out. He is missing exactly one thing, `github.act` in `scope`, because
+agent1 never asked for it. His `realm_access.roles` is not empty, which is the
+point: this is authorisation failing on its own, not identity.
+Source: `diagrams/bob-auth-flow.excalidraw`.
 
 ## Headless check
 
