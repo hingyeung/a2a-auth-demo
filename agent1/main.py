@@ -168,11 +168,11 @@ async def logout(request: Request, next: str = ""):
             "post_logout_redirect_uri": f"{oidc.BASE_URL}/",
         })
         resp = RedirectResponse(f"{oidc.LOGOUT_URL}?{q}")
-    else:
-        resp = RedirectResponse(back or "/")
-    if back:
-        resp.set_cookie("return_to", next, max_age=120, httponly=True, samesite="lax")
-    return resp
+        # Only the Keycloak round trip lands on "/", which reads this cookie.
+        if back:
+            resp.set_cookie("return_to", next, max_age=120, httponly=True, samesite="lax")
+        return resp
+    return RedirectResponse(back or "/")
 
 
 @app.get("/whoami")

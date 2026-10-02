@@ -566,6 +566,7 @@ function next() {
 // ---------------- controls + event stream ----------------
 
 let loggedIn = false;
+let asking = false;           // an /ask request is in flight
 
 async function refreshWho() {
   try {
@@ -575,7 +576,7 @@ async function refreshWho() {
     $("who").textContent = loggedIn ? `PLAYER: ${j.user.toUpperCase()}` : "NOT LOGGED IN";
     $("login").textContent = loggedIn ? "LOGOUT" : "INSERT COIN (LOGIN)";
     $("user").disabled = loggedIn;
-    $("ask").disabled = !loggedIn;
+    $("ask").disabled = !loggedIn || asking;
     if (scene && !busy) scene.actors.user.setFrame(CHAR[player] ?? CHAR.alice);
   } catch (e) { /* agent1 restarting; try again on the next tick */ }
 }
@@ -599,6 +600,7 @@ $("login").onclick = () => {
 };
 $("user").onchange = () => { player = $("user").value; if (scene) scene.actors.user.setFrame(CHAR[player]); };
 $("ask").onclick = async () => {
+  asking = true;
   $("ask").disabled = true;
   try {
     const r = await fetch("/ask", {
@@ -608,6 +610,7 @@ $("ask").onclick = async () => {
     });
     if (r.status === 401) await refreshWho();
   } finally {
+    asking = false;
     $("ask").disabled = !loggedIn;
   }
 };
