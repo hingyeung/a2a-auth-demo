@@ -63,6 +63,48 @@ Then:
    `skills`). Agent1's is a plain JSON doc for comparison - agent1 is not an
    A2A server in this demo, its `/ask` endpoint is plain REST.
 
+## Auth Arcade: watch it as an 8-bit game
+
+Open http://localhost:9001/arcade for the same flow as a pixel-art game.
+Students log in, ask, and watch each real step play out on a small town map:
+Keycloak's castle, agent1's keep, the gate in front of agent2 (four check
+lamps, one per middleware check), the MCP vault, and GitHub's login server.
+
+GitHub's login server has its own building on purpose. It is where the user
+logs in to GitHub and agrees, and it is the only place GitHub tokens come
+from. Keycloak plays no part in that leg: agent2 is the OAuth client, and a
+signed ticket (not a Keycloak token) ties the consent to the right user. In
+mock mode `mockmcp` plays both the MCP server and GitHub's login server, and
+the game says so.
+
+- Log in as **alice** and ask: login, role check, token exchange, the four
+  gate checks, the GitHub consent bonus stage (first time only), then the
+  vault opens. **STAGE CLEAR.**
+- Log in as **bob** and ask: gates 1 to 3 pass, gate 4 (`scope`) fails.
+  **GAME OVER** with agent2's real `403 missing scope github.act`.
+
+The game pauses after each step. Press **Space** or **NEXT** to go on, or turn
+on **AUTO**. The token card shows the key claims of the token in play and
+lights up the claim being checked. **SOUND** turns on 8-bit blips.
+
+Nothing is scripted. agent1 and agent2 emit one event per real step
+(`common/common/events.py`). agent2 posts its events to agent1
+(`POST /events/ingest`, guarded by `EVENTS_KEY`), and agent1 streams them to
+the page over server-sent events (`GET /events`). Events carry decoded claims,
+never a raw token. If agent1 is down, agent2 just drops its events; the auth
+flow does not depend on them.
+
+| file | what it holds |
+|------|---------------|
+| `common/common/events.py` | event shape, the in-memory bus, agent2's `forward()` |
+| `agent1/main.py` | `/arcade`, `/events`, `/events/ingest`, and the H2A/A2A emit points |
+| `agent2/auth.py` | one event per gate check |
+| `agent2/github_oauth.py`, `agent2/executor.py` | consent and MCP events |
+| `agent1/static/arcade/` | the page: Phaser 3 from a CDN, no build step |
+
+Art: [Kenney](https://kenney.nl) Tiny Town and Tiny Dungeon (CC0), see
+`agent1/static/arcade/assets/LICENSE-kenney.txt`.
+
 ## Sequence diagram: alice's auth flow
 
 ![Alice's auth flow — real GitHub MCP server](diagrams/alice-github-auth-flow.png)

@@ -8,7 +8,7 @@ from a2a.server.events import EventQueue
 from a2a.server.tasks import TaskUpdater
 from a2a.types import Part, TaskState, TextPart
 
-from common import jwt_verify, trace
+from common import events, jwt_verify, trace
 
 import github_oauth
 import mcp_client
@@ -64,9 +64,22 @@ class GitHubAgentExecutor(AgentExecutor):
         text = context.get_user_input()
 
         gh = store.get_token(sub)
+        await events.forward(sub, events.make(
+            "mcp.token.lookup", leg="MCP", kind="check", src="agent2",
+            note=("agent2 looks in its token store for this sub's GitHub token. Found it."
+                  if gh else "agent2 looks in its token store for this sub's GitHub token. "
+                  "None yet: the user has to give consent first."),
+            check={"name": "GitHub token stored", "claim": "store[sub]",
+                   "expected": "a GitHub token", "actual": "found" if gh else "none",
+                   "ok": bool(gh)}))
         if not gh:
             ticket = github_oauth.mint_ticket(sub)
             url = github_oauth.consent_url(ticket)
+            await events.forward(sub, events.make(
+                "consent.needed", leg="CONSENT", kind="result", src="agent2", dst="agent1",
+                note="agent2 answers input-required with a consent link. The link holds a "
+                     "signed ticket with the user's sub, valid 5 minutes.",
+                data={"ticket_url": url, "a2a_state": "input-required"}))
             await updater.update_status(
                 TaskState.input_required,
                 message=updater.new_agent_message(
@@ -86,7 +99,21 @@ class GitHubAgentExecutor(AgentExecutor):
             ),
         )
 
+        await events.forward(sub, events.make(
+            "mcp.call", leg="MCP", kind="request", src="agent2", dst="mcp",
+            note=f"agent2 calls the MCP tool {tool} with the user's own GitHub token "
+                 "as a Bearer token.",
+            token=events.token_view(gh["access_token"], "GitHub token"),
+            data={"tool": tool, "arguments": args, "mode": mcp_client.MODE}))
+
         result = await mcp_client.call_tool(gh["access_token"], tool, args)
+
+        await events.forward(sub, events.make(
+            "mcp.result", leg="MCP", kind="result", src="mcp", dst="agent2",
+            note=("The MCP server checks the GitHub token and runs the tool. Treasure!"
+                  if "error" not in result else f"The MCP server refused: {result['error']}"),
+            http={"status": 401 if "error" in result else 200, "body": ""},
+            data={"ok": "error" not in result, "preview": json.dumps(result)[:800]}))
 
         trace.add(sub, "MCP GitHub token (agent2 -> MCP server)", gh["access_token"],
                   note=(f"user sub={sub} | tool={tool} | mode={mcp_client.MODE} | "

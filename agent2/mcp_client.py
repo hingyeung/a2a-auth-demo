@@ -65,6 +65,8 @@ async def discover() -> dict:
             "token_endpoint": token_endpoint,
             "registration_endpoint": registration_endpoint,
             "probe_status": probe.status_code,
+            "resource_metadata": resource_meta_url,
+            "authorization_server": as_url,
             "www_authenticate": probe.headers.get("www-authenticate"),
         }
 

@@ -91,8 +91,12 @@ async def ask_agent2(obo: str, prompt: str) -> dict:
         }
 
 
-async def raw_a2a_call(token: str | None) -> dict:
-    """Used by the break-it buttons. Bypass the SDK. Report the raw HTTP result."""
+async def raw_a2a_call(token: str | None, *, repeat: bool = False) -> dict:
+    """Used by the break-it buttons. Bypass the SDK. Report the raw HTTP result.
+
+    repeat=True marks a second send of a call agent2 already refused (only to
+    read its real status), so agent2 does not show the gate checks twice on
+    the Auth Arcade page."""
     body = {
         "jsonrpc": "2.0",
         "id": "break-it",
@@ -108,6 +112,8 @@ async def raw_a2a_call(token: str | None) -> dict:
     headers = {"content-type": "application/json"}
     if token:
         headers["authorization"] = f"Bearer {token}"
+    if repeat:
+        headers["x-arcade-repeat"] = "1"
     async with httpx.AsyncClient(timeout=15) as hc:
         r = await hc.post(f"{AGENT2}/a2a", json=body, headers=headers)
     return {

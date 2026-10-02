@@ -34,6 +34,8 @@ services:
       SESSION_SECRET: ${SESSION_SECRET}
       ROGUE_CLIENT_ID: rogue-agent
       ROGUE_SECRET: rogue-dev-secret
+      # Shared with agent2, which posts its Auth Arcade events to agent1.
+      EVENTS_KEY: ${EVENTS_KEY:-dev-events-key}
     ports:
       - "9001:9001"
     depends_on:
@@ -56,6 +58,9 @@ services:
       MCP_GITHUB_URL: https://api.githubcopilot.com/mcp/
       GITHUB_APP_CLIENT_ID: ${GITHUB_APP_CLIENT_ID:-}
       GITHUB_APP_CLIENT_SECRET: ${GITHUB_APP_CLIENT_SECRET:-}
+      # Where agent2 sends its Auth Arcade events (see common/common/events.py).
+      EVENTS_INGEST_URL: http://agent1:9001/events/ingest
+      EVENTS_KEY: ${EVENTS_KEY:-dev-events-key}
     volumes:
       - agent2-data:/data
     ports:
