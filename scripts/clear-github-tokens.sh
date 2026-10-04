@@ -23,11 +23,12 @@ fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 agent2_py() { docker compose exec -T agent2 python -c "$1"; }
 
 admin_token() {
-  curl -sf "$KC/realms/master/protocol/openid-connect/token" \
+  local body
+  body=$(curl -sf "$KC/realms/master/protocol/openid-connect/token" \
     -d grant_type=password -d client_id=admin-cli \
-    -d username="$KC_ADMIN" -d password="$KC_ADMIN_PASSWORD" \
-    | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])' \
+    -d username="$KC_ADMIN" -d password="$KC_ADMIN_PASSWORD") \
     || fail "cannot get a Keycloak admin token from $KC"
+  printf '%s' "$body" | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])'
 }
 
 [ $# -eq 1 ] || usage 1
@@ -53,13 +54,17 @@ for sub, at in store.list_subs(): print(sub, at)' > "$LIST"
   -*) usage 1 ;;
   *)
     AT=$(admin_token)
-    SUB=$(curl -sf -H "authorization: Bearer $AT" \
-      "$KC/admin/realms/$REALM/users?username=$1&exact=true" \
-      | python3 -c 'import sys,json;u=json.load(sys.stdin);print(u[0]["id"] if u else "")')
+    NAME_Q=$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1], safe=""))' "$1")
+    USERS=$(curl -sf -H "authorization: Bearer $AT" \
+      "$KC/admin/realms/$REALM/users?username=$NAME_Q&exact=true") \
+      || fail "Keycloak user lookup failed at $KC"
+    SUB=$(printf '%s' "$USERS" | python3 -c 'import sys,json;u=json.load(sys.stdin);print(u[0]["id"] if u else "")')
     [ -n "$SUB" ] || fail "no Keycloak user named $1"
-    agent2_py "import store
-had = store.get_token('$SUB') is not None
-store.delete_token('$SUB')
-print('deleted the token for $1 ($SUB)' if had else 'no token stored for $1 ($SUB)')"
+    # Values go in as env vars, never pasted into the Python source.
+    docker compose exec -T -e SUB="$SUB" -e NAME="$1" agent2 python -c 'import os, store
+sub, name = os.environ["SUB"], os.environ["NAME"]
+had = store.get_token(sub) is not None
+store.delete_token(sub)
+print(f"deleted the token for {name} ({sub})" if had else f"no token stored for {name} ({sub})")'
     ;;
 esac

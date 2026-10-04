@@ -134,10 +134,22 @@ class GitHubAgentExecutor(AgentExecutor):
             await _ask_for_consent(updater, sub, "The old GitHub token no longer works.")
             return
 
+        if "error" in result:
+            trace.add(sub, "MCP GitHub token (repository agent -> MCP server)", gh["access_token"],
+                      note=f"MCP tool call failed: {err}", ok=False)
+            await updater.update_status(
+                TaskState.failed,
+                message=updater.new_agent_message(
+                    [Part(root=TextPart(text=f"The MCP tool call failed: {json.dumps(err)[:500]}"))]
+                ),
+                final=True,
+            )
+            return
+
         trace.add(sub, "MCP GitHub token (repository agent -> MCP server)", gh["access_token"],
                   note=(f"user sub={sub} | tool={tool} | mode={mcp_client.MODE} | "
                         "GitHub tokens are opaque, not JWTs"),
-                  ok="error" not in result)
+                  ok=True)
 
         await updater.update_status(
             TaskState.working,

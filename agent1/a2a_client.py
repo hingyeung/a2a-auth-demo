@@ -76,6 +76,8 @@ async def ask_agent2(obo: str, prompt: str) -> dict:
             if task.status and task.status.message:
                 msg_text = _text_of(task.status.message)
             states.append({"state": state, "note": msg_text})
+            if task.status and task.status.state == TaskState.failed:
+                final_text = msg_text or final_text
             if task.status and task.status.state == TaskState.input_required:
                 input_required = True
                 if "ticket=" in msg_text:

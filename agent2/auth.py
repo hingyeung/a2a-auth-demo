@@ -43,14 +43,6 @@ async def _check(sub, name: str, ok: bool, note: str, *, claim: str = "",
     ))
 
 
-def _unverified_sub(token: str):
-    # Only to route arcade events to the right user. Never used for a decision.
-    try:
-        return jwt_verify.unverified(token).get("sub")
-    except Exception:  # noqa: BLE001
-        return None
-
-
 def _realm_challenge() -> str:
     return f'Bearer realm="{REALM}", error="invalid_token"'
 
@@ -69,25 +61,25 @@ class OBOAuthMiddleware(BaseHTTPMiddleware):
                 headers={"WWW-Authenticate": _realm_challenge()},
             )
         token = header.split(None, 1)[1].strip()
-        # A repeat send (see the orchestrator agent's raw_a2a_call) gets the same checks, silently.
-        sub = None if request.headers.get("x-arcade-repeat") else _unverified_sub(token)
-        await _check(sub, "bearer", True, "Gate 1: is there a Bearer token? Yes.",
-                     claim="Authorization", expected="Bearer <token>", actual="Bearer ...")
 
         try:
             claims = jwt_verify.verify(
                 token, audience=AUDIENCE, issuer=ISSUER, jwks_url=JWKS_URL
             )
         except jwt_verify.TokenError as e:
-            await _check(sub, "jwt", False, f"Gate 2 failed: {e.detail}.",
-                         claim="signature, iss, aud, exp", expected=AUDIENCE,
-                         actual=e.detail, status=e.status, body=e.detail)
+            # No arcade events here: an unverified token cannot say which
+            # user's screen the events belong to.
             return JSONResponse(
                 {"error": e.detail},
                 status_code=e.status,
                 headers={"WWW-Authenticate": _realm_challenge()},
             )
 
+        # Arcade events go to the user named by the verified sub only.
+        # A repeat send (see the orchestrator agent's raw_a2a_call) gets the same checks, silently.
+        sub = None if request.headers.get("x-arcade-repeat") else claims.sub
+        await _check(sub, "bearer", True, "Gate 1: is there a Bearer token? Yes.",
+                     claim="Authorization", expected="Bearer <token>", actual="Bearer ...")
         await _check(sub, "jwt", True,
                      "Gate 2: signed by Keycloak (checked with its JWKS), right issuer, "
                      f"aud includes {AUDIENCE}, not expired. Pass.",

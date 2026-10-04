@@ -292,6 +292,11 @@ async def ask(request: Request, prompt: str = Form(...)):
         _ev(sid, "a2a.input_required", leg="CONSENT", kind="result", src="agent1", dst="user",
             note="The repository agent needs the user's OK for GitHub first. Open the consent link, "
                  "then ask again.", data={"ticket_url": result.get("ticket_url")})
+    elif any(s["state"] == "failed" for s in result.get("states", [])):
+        _ev(sid, "a2a.failed", leg="MCP", kind="result", src="agent1", dst="user",
+            note="The repository agent could not finish: the MCP tool call failed. The "
+                 "tokens were fine, the tool was not.",
+            data={"final_text": (result.get("final_text") or "")[:1500]})
     else:
         _ev(sid, "a2a.done", leg="A2A", kind="result", src="agent1", dst="user",
             note="The repository agent's answer comes back through the orchestrator agent to "

@@ -259,6 +259,7 @@ async function animate(ev) {
       await s.walk("user");
       break;
     case "ask.start":
+      s.resetStage();
       await s.walk("user", "agent1");
       await s.pop("user", "LIST MY REPOS!");
       break;
@@ -294,6 +295,7 @@ async function animate(ev) {
       }
       break;
     }
+    case "a2a.failed":
     case "a2a.refused":
       await s.walk("agent1");
       Sfx.over();
@@ -396,6 +398,7 @@ const TITLES = {
   "a2a.check.caller": "GATE CHECK 3: CALLER ALLOWLIST",
   "a2a.check.scope": "GATE CHECK 4: SCOPE",
   "a2a.refused": "GAME OVER: 403",
+  "a2a.failed": "GAME OVER: TOOL ERROR",
   "mcp.token.lookup": "REPO AGENT CHECKS ITS TOKEN STORE",
   "consent.needed": "INPUT REQUIRED",
   "a2a.input_required": "BONUS STAGE: GITHUB CONSENT",
@@ -507,8 +510,8 @@ function renderStep(ev) {
   if (ev.step === "consent.swap" && ev.data) {
     html += `<div class="check ok"><span>POST ${esc(ev.data.token_endpoint)}<br>sends: ${esc(ev.data.sends.join(" + "))}</span></div>`;
   }
-  if (ev.step === "a2a.done" && ev.data?.final_text) {
-    html += `<details><summary>THE TREASURE (TOOL RESULT)</summary><pre>${esc(ev.data.final_text)}</pre></details>`;
+  if ((ev.step === "a2a.done" || ev.step === "a2a.failed") && ev.data?.final_text) {
+    html += `<details><summary>${ev.step === "a2a.failed" ? "THE ERROR" : "THE TREASURE"} (TOOL RESULT)</summary><pre>${esc(ev.data.final_text)}</pre></details>`;
   }
   if (ENDINGS[ev.step]) html += esc(ENDINGS[ev.step](ev));
   $("say").innerHTML = html;
