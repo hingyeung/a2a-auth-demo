@@ -1,4 +1,5 @@
-"""The public AgentCard. It states the auth requirement. The middleware enforces it."""
+"""The repository agent's public AgentCard. It states the auth requirement.
+The middleware enforces it."""
 from __future__ import annotations
 
 import os
@@ -29,21 +30,24 @@ def build_card() -> AgentCard:
                 authorization_code=AuthorizationCodeOAuthFlow(
                     authorization_url=AUTH_URL,
                     token_url=TOKEN_URL,
-                    scopes={REQUIRED_SCOPE: "Call agent2 on behalf of the signed-in user."},
+                    scopes={REQUIRED_SCOPE: "Call the repository agent on behalf of the signed-in user."},
                 )
             ),
         )
     )
     skill = AgentSkill(
         id="github",
-        name="GitHub read",
-        description="List repos and issues for the signed-in user via the GitHub MCP server.",
+        name="Read your GitHub repos",
+        description="Uses an MCP tool to read the signed-in user's GitHub repos (and "
+        "open issues), with that user's own GitHub token.",
         tags=["github", "mcp"],
         examples=["list my repos", "show my open issues"],
     )
     return AgentCard(
-        name="GitHub agent (agent2)",
-        description="Calls the GitHub MCP server with the end user's own token.",
+        name="Repository agent",
+        description="Reads the user's GitHub repos: it calls a GitHub MCP tool with the "
+        "end user's own GitHub token. The orchestrator agent calls it over A2A on "
+        "that user's behalf.",
         url=f"{BASE_URL}/a2a",
         version="0.1.0",
         preferred_transport="JSONRPC",

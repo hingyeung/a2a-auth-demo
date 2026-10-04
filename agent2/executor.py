@@ -8,7 +8,7 @@ from a2a.server.events import EventQueue
 from a2a.server.tasks import TaskUpdater
 from a2a.types import Part, TaskState, TextPart
 
-from common import jwt_verify, trace
+from common import events, jwt_verify, trace
 
 import github_oauth
 import mcp_client
@@ -53,6 +53,27 @@ def _claims_from_context(context: RequestContext):
     return jwt_verify.verify(token, audience=AUDIENCE, issuer=ISSUER, jwks_url=JWKS_URL)
 
 
+async def _ask_for_consent(updater: TaskUpdater, sub: str, why: str) -> None:
+    """End the task as input-required with a fresh consent link."""
+    ticket = github_oauth.mint_ticket(sub)
+    url = github_oauth.consent_url(ticket)
+    await events.forward(sub, events.make(
+        "consent.needed", leg="CONSENT", kind="result", src="agent2", dst="agent1",
+        note=f"{why} The repository agent answers input-required with a consent link. The link "
+             "holds a signed ticket with the user's sub, valid 5 minutes.",
+        data={"ticket_url": url, "a2a_state": "input-required"}))
+    await updater.update_status(
+        TaskState.input_required,
+        message=updater.new_agent_message(
+            [Part(root=TextPart(text=f"GitHub consent needed. Open this link: {url}"))]
+        ),
+        final=True,
+    )
+    trace.add(sub, "MCP: no usable GitHub token", None,
+              note=f"{why} The repository agent returned input-required with a signed ticket link.",
+              ok=True)
+
+
 class GitHubAgentExecutor(AgentExecutor):
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         updater = TaskUpdater(event_queue, context.task_id, context.context_id)
@@ -64,18 +85,17 @@ class GitHubAgentExecutor(AgentExecutor):
         text = context.get_user_input()
 
         gh = store.get_token(sub)
+        await events.forward(sub, events.make(
+            "mcp.token.lookup", leg="MCP", kind="check", src="agent2",
+            note=("The repository agent looks in its token store for this sub's GitHub "
+                  "token. Found it." if gh else
+                  "The repository agent looks in its token store for this sub's GitHub token. "
+                  "None yet: the user has to give consent first."),
+            check={"name": "GitHub token stored", "claim": "store[sub]",
+                   "expected": "a GitHub token", "actual": "found" if gh else "none",
+                   "ok": bool(gh)}))
         if not gh:
-            ticket = github_oauth.mint_ticket(sub)
-            url = github_oauth.consent_url(ticket)
-            await updater.update_status(
-                TaskState.input_required,
-                message=updater.new_agent_message(
-                    [Part(root=TextPart(text=f"GitHub consent needed. Open this link: {url}"))]
-                ),
-                final=True,
-            )
-            trace.add(sub, "MCP: no GitHub token yet", None,
-                      note="agent2 returned input-required with a signed ticket link.", ok=True)
+            await _ask_for_consent(updater, sub, "No GitHub token stored yet.")
             return
 
         tool, args = _pick_tool(text)
@@ -86,12 +106,50 @@ class GitHubAgentExecutor(AgentExecutor):
             ),
         )
 
+        await events.forward(sub, events.make(
+            "mcp.call", leg="MCP", kind="request", src="agent2", dst="mcp",
+            note=f"The repository agent calls the MCP tool {tool} with the user's own GitHub token "
+                 "as a Bearer token.",
+            token=events.token_view(gh["access_token"], "GitHub token"),
+            data={"tool": tool, "arguments": args, "mode": mcp_client.MODE}))
+
         result = await mcp_client.call_tool(gh["access_token"], tool, args)
 
-        trace.add(sub, "MCP GitHub token (agent2 -> MCP server)", gh["access_token"],
+        err = result.get("error")
+        rejected = isinstance(err, str) and err.startswith("MCP rejected the token")
+        await events.forward(sub, events.make(
+            "mcp.result", leg="MCP", kind="result", src="mcp", dst="agent2",
+            note=("The MCP server checks the GitHub token and runs the tool. Treasure!"
+                  if "error" not in result else
+                  "The MCP server refused the stored GitHub token (401). It may be revoked or "
+                  "expired. The repository agent deletes it and asks the user for consent again."
+                  if rejected else f"The MCP server refused: {result['error']}"),
+            http={"status": 401 if rejected else (502 if "error" in result else 200), "body": ""},
+            data={"ok": "error" not in result, "preview": json.dumps(result)[:800]}))
+
+        if rejected:
+            store.delete_token(sub)
+            trace.add(sub, "MCP GitHub token (repository agent -> MCP server)", gh["access_token"],
+                      note="MCP returned 401. Stored GitHub token deleted.", ok=False)
+            await _ask_for_consent(updater, sub, "The old GitHub token no longer works.")
+            return
+
+        if "error" in result:
+            trace.add(sub, "MCP GitHub token (repository agent -> MCP server)", gh["access_token"],
+                      note=f"MCP tool call failed: {err}", ok=False)
+            await updater.update_status(
+                TaskState.failed,
+                message=updater.new_agent_message(
+                    [Part(root=TextPart(text=f"The MCP tool call failed: {json.dumps(err)[:500]}"))]
+                ),
+                final=True,
+            )
+            return
+
+        trace.add(sub, "MCP GitHub token (repository agent -> MCP server)", gh["access_token"],
                   note=(f"user sub={sub} | tool={tool} | mode={mcp_client.MODE} | "
                         "GitHub tokens are opaque, not JWTs"),
-                  ok="error" not in result)
+                  ok=True)
 
         await updater.update_status(
             TaskState.working,

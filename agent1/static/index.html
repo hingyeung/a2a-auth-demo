@@ -18,6 +18,12 @@
 </head>
 <body>
   <h1>H2A to A2A to MCP, with user identity</h1>
+  <p class="row" style="font-size:13px; color:#444">
+    You talk to the <strong>orchestrator agent</strong> (this page, Keycloak client
+    <code>agent1-orchestrator</code>). It calls the <strong>repository agent</strong>
+    (Keycloak audience <code>agent2-github-agent</code>) over A2A. The repository agent
+    uses an MCP tool to read your GitHub repos.
+  </p>
 
   <div class="row">
     <select id="loginUser">
@@ -30,7 +36,7 @@
 
   <div class="row">
     <input id="prompt" size="40" value="list my repos" />
-    <button onclick="ask()">Ask agent1</button>
+    <button onclick="ask()">Ask the orchestrator agent</button>
   </div>
 
   <div class="row" id="answer"></div>
@@ -48,9 +54,9 @@
 
   <div class="row">
     <strong>Agent cards:</strong>
-    <a href="/.well-known/agent-card.json" target="_blank">agent1 card</a>
+    <a href="/.well-known/agent-card.json" target="_blank">orchestrator agent card</a>
     &nbsp;|&nbsp;
-    <a href="http://localhost:9002/.well-known/agent-card.json" target="_blank">agent2 card</a>
+    <a href="http://localhost:9002/.well-known/agent-card.json" target="_blank">repository agent card</a>
   </div>
 
   <div class="row">

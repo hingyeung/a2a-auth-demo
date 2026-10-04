@@ -1,4 +1,5 @@
-"""Agent 2: the GitHub agent. A2A server plus the GitHub consent routes."""
+"""agent2, the repository agent: it uses an MCP tool to read the user's GitHub
+repos. A2A server plus the GitHub consent routes."""
 from __future__ import annotations
 
 from a2a.server.apps import A2AStarletteApplication
