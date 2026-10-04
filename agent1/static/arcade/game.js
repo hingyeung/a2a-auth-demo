@@ -1,4 +1,4 @@
-// Auth Arcade: draws the live auth events from agent1's /events stream.
+// Auth Arcade: draws the live auth events from the orchestrator agent's /events stream.
 //
 // Flow: EventSource -> queue -> one "beat" at a time. Each beat plays a short
 // animation on the Phaser map, then shows the step's note and token card in
@@ -11,13 +11,16 @@ const $ = (id) => document.getElementById(id);
 
 const W = 320, H = 180, ROAD_Y = 118;
 
-// Where each actor stands, and the label under its building.
+// Where each actor stands, and the label under its building. Keys are the
+// technical IDs used in event src/dst (agent1 = orchestrator agent, agent2 =
+// repository agent); labels are what the player reads.
 const PLACES = {
   user:     { x: 24,  y: ROAD_Y, label: "HOME" },
   keycloak: { x: 88,  y: 70,     label: "KEYCLOAK" },
-  agent1:   { x: 136, y: ROAD_Y, label: "AGENT1" },
-  gate:     { x: 184, y: ROAD_Y, label: "GATE" },
-  agent2:   { x: 232, y: ROAD_Y, label: "AGENT2" },
+  agent1:   { x: 136, y: ROAD_Y, label: "ORCHESTRATOR" },
+  // labelDy: GATE sits between two long labels, so its label drops a row.
+  gate:     { x: 184, y: ROAD_Y, label: "GATE", labelDy: 10 },
+  agent2:   { x: 232, y: ROAD_Y, label: "REPO AGENT" },
   mcp:      { x: 296, y: ROAD_Y, label: "MCP" },
   // GitHub's login server (the OAuth authorization server for GitHub tokens).
   // Its own building, apart from the MCP vault: it gives out GitHub tokens,
@@ -33,8 +36,8 @@ const BUILDINGS = [
   // [sheet, left col, top row, frame grid]
   ["town", 0, 4, [[52, 53, 55], [64, 65, 67], [84, 85, 87]]],          // home
   ["town", 4, 1, [[99, 100, 101], [111, 112, 113], [123, 124, 125]]],  // keycloak castle
-  ["town", 7, 4, [[48, 49, 51], [60, 61, 63], [88, 89, 91]]],          // agent1 keep
-  ["town", 13, 4, [[48, 49, 50], [60, 61, 62], [76, 78, 79]]],         // agent2 tower
+  ["town", 7, 4, [[48, 49, 51], [60, 61, 63], [88, 89, 91]]],          // orchestrator agent keep
+  ["town", 13, 4, [[48, 49, 50], [60, 61, 62], [76, 78, 79]]],         // repository agent tower
   ["dungeon", 17, 4, [[57, 58, 59], [57, 58, 59], [45, 46, 47]]],      // MCP vault
   ["dungeon", 15, 1, [[9, 10, 11], [21, 22, 23], [33, 34, 35]]],       // GitHub login server
 ];
@@ -82,7 +85,7 @@ class Town extends Phaser.Scene {
       grid.forEach((line, dr) => line.forEach((f, dc) =>
         this.add.image((col + dc) * 16 + 8, (row + dr) * 16 + 8, sheet, f)));
     }
-    // The gate between agent1 and agent2: a portcullis with four check lamps.
+    // The gate between the orchestrator agent and the repository agent: a portcullis with four check lamps.
     this.gate = this.add.image(PLACES.gate.x, 6 * 16 + 8, "dungeon", 68);
     this.lamps = [0, 1, 2, 3].map((i) => {
       const x = PLACES.gate.x - 15 + i * 10;
@@ -92,7 +95,7 @@ class Town extends Phaser.Scene {
     });
 
     for (const [key, p] of Object.entries(PLACES)) {
-      const ly = UP_PLACES.includes(key) ? 2 : 8 * 16 + 2;
+      const ly = (UP_PLACES.includes(key) ? 2 : 8 * 16 + 2) + (p.labelDy || 0);
       const t = this.add.text(p.x, ly, p.label, this.font(8)).setOrigin(0.5, 0);
       t.setBackgroundColor("#000000aa").setPadding(1, 1, 1, 0);
     }
@@ -383,17 +386,17 @@ async function animate(ev) {
 const TITLES = {
   "h2a.login.start": "LOGIN: OFF TO KEYCLOAK",
   "h2a.login.token": "KEY FORGED: USER TOKEN",
-  "ask.start": "A QUEST FOR AGENT1",
-  "h2a.role.check": "AGENT1 CHECKS THE ROLE",
+  "ask.start": "A QUEST FOR THE ORCHESTRATOR",
+  "h2a.role.check": "ORCHESTRATOR CHECKS THE ROLE",
   "a2a.exchange.request": "TOKEN EXCHANGE (RFC 8693)",
   "a2a.exchange.token": "NEW KEY: OBO TOKEN",
-  "a2a.call": "TO THE GATE OF AGENT2",
+  "a2a.call": "TO THE GATE OF THE REPO AGENT",
   "a2a.check.bearer": "GATE CHECK 1: BEARER",
   "a2a.check.jwt": "GATE CHECK 2: SIGNATURE, AUD, EXP",
   "a2a.check.caller": "GATE CHECK 3: CALLER ALLOWLIST",
   "a2a.check.scope": "GATE CHECK 4: SCOPE",
   "a2a.refused": "GAME OVER: 403",
-  "mcp.token.lookup": "AGENT2 CHECKS ITS TOKEN STORE",
+  "mcp.token.lookup": "REPO AGENT CHECKS ITS TOKEN STORE",
   "consent.needed": "INPUT REQUIRED",
   "a2a.input_required": "BONUS STAGE: GITHUB CONSENT",
   "consent.ticket": "THE SIGNED TICKET",
@@ -412,12 +415,12 @@ const TITLES = {
 
 const ENDINGS = {
   "a2a.done": (ev) =>
-    "\n\nWHAT YOU SAW: one identity (sub) went all the way. The user token was for agent1. " +
-    "The OBO token was for agent2 and named agent1 as the caller. The GitHub token was the user's own, " +
+    "\n\nWHAT YOU SAW: one identity (sub) went all the way. The user token was for the orchestrator agent. " +
+    "The OBO token was for the repository agent and named the orchestrator agent as the caller. The GitHub token was the user's own, " +
     "made by GitHub (not Keycloak) after the user agreed. " +
     "Each hop got a new token for exactly one audience.",
   "a2a.refused": () =>
-    "\n\nWHAT YOU SAW: gates 1 to 3 passed. Bob is real, and agent1 really called. " +
+    "\n\nWHAT YOU SAW: gates 1 to 3 passed. Bob is real, and the orchestrator agent really called. " +
     "Only gate 4 failed: Bob is not allowed. Identity (who) and authorisation (may they) are separate checks.",
 };
 
@@ -480,7 +483,8 @@ function renderInventory() {
 }
 
 function renderStep(ev) {
-  const title = TITLES[ev.step] || ev.step.toUpperCase();
+  const title = ev.step === "mcp.result" && !ev.data?.ok ? "THE VAULT STAYS SHUT"
+    : TITLES[ev.step] || ev.step.toUpperCase();
   $("stepTitle").innerHTML = `<span class="leg ${esc(ev.leg)}">${esc(ev.leg)}</span>${esc(title)}`;
   let html = esc(ev.note || "");
   if (ev.check) {
@@ -515,8 +519,8 @@ function renderStep(ev) {
     // leaving the last OBO token on screen.
     $("cardTitle").textContent = "NO TOKEN IN PLAY: SIGNED TICKET";
     $("card").innerHTML =
-      `<p>The consent leg does not use the Keycloak tokens. agent2 links it to the right user ` +
-      `with a <b>signed ticket</b>: the user's sub plus a one-time nonce, signed by agent2, valid 5 minutes.</p>` +
+      `<p>The consent leg does not use the Keycloak tokens. The repository agent links it to the right user ` +
+      `with a <b>signed ticket</b>: the user's sub plus a one-time nonce, signed by the repository agent, valid 5 minutes.</p>` +
       `<p style="color:var(--dim)">The GitHub token comes from GitHub's login server, after the user logs in ` +
       `to GitHub and agrees. Keycloak never sees it.</p>`;
     return;
@@ -578,7 +582,7 @@ async function refreshWho() {
     $("user").disabled = loggedIn;
     $("ask").disabled = !loggedIn || asking;
     if (scene && !busy) scene.actors.user.setFrame(CHAR[player] ?? CHAR.alice);
-  } catch (e) { /* agent1 restarting; try again on the next tick */ }
+  } catch (e) { /* orchestrator agent restarting; try again on the next tick */ }
 }
 
 function connect() {
@@ -621,11 +625,12 @@ $("auto").onclick = () => {
   $("auto").classList.toggle("on", auto);
   if (auto) next();
 };
-$("sound").onclick = () => {
-  const on = Sfx.toggle();
+const showSound = (on) => {
   $("sound").textContent = `SOUND: ${on ? "ON" : "OFF"}`;
   $("sound").classList.toggle("on", on);
 };
+$("sound").onclick = () => showSound(Sfx.toggle());
+showSound(Sfx.isOn()); // remembered across the Keycloak login/logout reload
 $("reset").onclick = async () => {
   await fetch("/events/clear", { method: "POST" });
   queue.length = 0;
@@ -633,7 +638,7 @@ $("reset").onclick = async () => {
   renderInventory();
   $("card").innerHTML = '<span style="color:var(--dim)">No token yet.</span>';
   $("cardTitle").textContent = "TOKEN CARD";
-  $("stepTitle").textContent = loggedIn ? "PRESS ASK AGENT1" : "PRESS INSERT COIN TO START";
+  $("stepTitle").textContent = loggedIn ? "PRESS ASK ORCHESTRATOR" : "PRESS INSERT COIN TO START";
   $("say").textContent = "New game. The next steps you trigger will show up here.";
   scene?.resetStage(); scene?.setBanner("");
   next();

@@ -1,4 +1,4 @@
-"""A2A client. Resolve agent2's card, then stream one message with the OBO token."""
+"""A2A client. Resolve the repository agent's card (agent2), then stream one message with the OBO token."""
 from __future__ import annotations
 
 import os
@@ -48,7 +48,8 @@ async def ask_agent2(obo: str, prompt: str) -> dict:
     async with httpx.AsyncClient(timeout=30) as hc:
         card = await A2ACardResolver(hc, AGENT2).get_agent_card()
         # The public card names the browser-facing URL. Inside the Docker network
-        # agent1 must reach agent2 by its service name.
+        # the orchestrator agent must reach the repository agent by its service
+        # name (agent2).
         card.url = f"{AGENT2}/a2a"
         cfg = ClientConfig(
             httpx_client=hc,
@@ -94,8 +95,8 @@ async def ask_agent2(obo: str, prompt: str) -> dict:
 async def raw_a2a_call(token: str | None, *, repeat: bool = False) -> dict:
     """Used by the break-it buttons. Bypass the SDK. Report the raw HTTP result.
 
-    repeat=True marks a second send of a call agent2 already refused (only to
-    read its real status), so agent2 does not show the gate checks twice on
+    repeat=True marks a second send of a call the repository agent already
+    refused (only to read its real status), so it does not show the gate checks twice on
     the Auth Arcade page."""
     body = {
         "jsonrpc": "2.0",

@@ -1,4 +1,4 @@
-"""RFC 8693 token exchange. Turn the logged-in user's token into an OBO token for agent2."""
+"""RFC 8693 token exchange. Turn the logged-in user's token into an OBO token for the repository agent (agent2)."""
 from __future__ import annotations
 
 import os
@@ -17,8 +17,9 @@ class ExchangeError(Exception):
 
 def has_github_caller_role(user_claims: dict) -> bool:
     """Keycloak does not gate an optional client scope by user role on its
-    own - any user agent1 asks for github.act on behalf of, gets it. So the
-    decision has to be made here, by agent1, before it asks: only request
+    own - any user the orchestrator agent asks for github.act on behalf of, gets
+    it. So the decision has to be made here, by the orchestrator agent, before it
+    asks: only request
     github.act if the user's own token carries this realm role."""
     roles = (user_claims.get("realm_access") or {}).get("roles", [])
     return GITHUB_CALLER_ROLE in roles

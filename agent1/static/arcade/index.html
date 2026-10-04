@@ -103,7 +103,7 @@
   <div class="bar">
     <label class="sr" for="prompt">Prompt</label>
     <input id="prompt" value="list my repos" />
-    <button id="ask" disabled>ASK AGENT1</button>
+    <button id="ask" disabled>ASK ORCHESTRATOR</button>
     <button id="auto" title="Play every step without waiting">AUTO: OFF</button>
     <button id="sound" title="8-bit sound">SOUND: OFF</button>
     <button id="reset" title="Clear the story and start over">NEW GAME</button>
@@ -128,9 +128,11 @@
   </div>
 
   <div class="help">
-    <b>HOW TO PLAY.</b> 1. Log in as ALICE. 2. Ask. The first time, agent2 asks for GitHub consent: open the link, then ask again.
+    <b>WHO IS WHO.</b> ORCHESTRATOR is the orchestrator agent you talk to (Keycloak client agent1-orchestrator).
+    REPO AGENT is the repository agent (Keycloak audience agent2-github-agent): it uses an MCP tool to read your GitHub repos.
+    <b>HOW TO PLAY.</b> 1. Log in as ALICE. 2. Ask. The first time, the repository agent asks for GitHub consent: open the link, then ask again.
     3. Log out, log in as BOB, ask again, and see why he gets a 403.
-    Nothing here is faked: the steps, tokens and checks come from agent1, agent2 and Keycloak as they run.
+    Nothing here is faked: the steps, tokens and checks come from the orchestrator agent, the repository agent and Keycloak as they run.
     Tokens show decoded claims only. Classic view with the full trace table: <a href="/" style="color:var(--gold)">/</a>.
     Art: Kenney.nl (CC0).
   </div>

@@ -42,7 +42,7 @@ def authorize_url(state: str, challenge: str, login_hint: str | None = None) -> 
         "code_challenge": challenge,
         "code_challenge_method": "S256",
         # Keycloak keeps its own SSO session in the browser, separate from
-        # agent1's. Without this, clicking Login while that session is still
+        # the orchestrator agent's. Without this, clicking Login while that session is still
         # alice's silently hands back alice again - no form, login_hint
         # ignored, nothing to redirect to. prompt=login forces the real
         # credential form every time, regardless of any existing session.

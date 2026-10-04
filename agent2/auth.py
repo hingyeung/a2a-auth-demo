@@ -1,7 +1,8 @@
 """Starlette middleware in front of the A2A app.
 
 Two jobs, kept apart:
-  - Caller control: is this really agent1? (signature, aud, azp allowlist, scope)
+  - Caller control: is this really the orchestrator agent (Keycloak client
+    agent1-orchestrator)? (signature, aud, azp allowlist, scope)
   - User identity: who is the user? (sub, straight out of the verified token)
 """
 from __future__ import annotations
@@ -68,7 +69,7 @@ class OBOAuthMiddleware(BaseHTTPMiddleware):
                 headers={"WWW-Authenticate": _realm_challenge()},
             )
         token = header.split(None, 1)[1].strip()
-        # A repeat send (see agent1's raw_a2a_call) gets the same checks, silently.
+        # A repeat send (see the orchestrator agent's raw_a2a_call) gets the same checks, silently.
         sub = None if request.headers.get("x-arcade-repeat") else _unverified_sub(token)
         await _check(sub, "bearer", True, "Gate 1: is there a Bearer token? Yes.",
                      claim="Authorization", expected="Bearer <token>", actual="Bearer ...")
@@ -103,13 +104,13 @@ class OBOAuthMiddleware(BaseHTTPMiddleware):
             )
 
         await _check(sub, "caller", True,
-                     f"Gate 3: the caller is {caller}. It is on agent2's allowlist. Pass.",
+                     f"Gate 3: the caller is {caller}. It is on the repository agent's allowlist. Pass.",
                      claim="azp / act.sub", expected=sorted(ALLOWED_CALLERS), actual=caller)
 
         if REQUIRED_SCOPE not in claims.scopes:
             await _check(sub, "scope", False,
                          f"Gate 4 failed: the token has no {REQUIRED_SCOPE} scope. The user is "
-                         "real, but not allowed to use GitHub through agent2.",
+                         "real, but not allowed to use GitHub through the repository agent.",
                          claim="scope", expected=REQUIRED_SCOPE, actual=claims.scope,
                          status=403, body=f"missing scope {REQUIRED_SCOPE}")
             return JSONResponse(
@@ -118,7 +119,7 @@ class OBOAuthMiddleware(BaseHTTPMiddleware):
             )
 
         await _check(sub, "scope", True, f"Gate 4: scope includes {REQUIRED_SCOPE}. Pass. "
-                     "agent2 now reads the user from sub.",
+                     "The repository agent now reads the user from sub.",
                      claim="scope", expected=REQUIRED_SCOPE, actual=claims.scope)
 
         current_claims.set(claims)

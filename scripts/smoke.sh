@@ -25,10 +25,10 @@ echo "$UT" | python3 -c 'import sys,json,base64
 b=sys.stdin.read().strip().split(".")[1]; b+="="*(-len(b)%4)
 c=json.loads(base64.urlsafe_b64decode(b)); aud=c.get("aud")
 aud=[aud] if isinstance(aud,str) else (aud or [])
-assert "agent2-github-agent" not in aud, "user token must NOT already target agent2"
+assert "agent2-github-agent" not in aud, "user token must NOT already target the repository agent"
 print("ok: user token aud =", aud)'
 
-say "2. RFC 8693 token exchange -> OBO token for agent2"
+say "2. RFC 8693 token exchange -> OBO token for the repository agent (agent2)"
 OBO=$(curl -s "$TOKEN_EP" \
   -d grant_type=urn:ietf:params:oauth:grant-type:token-exchange \
   -d client_id=agent1-orchestrator -d client_secret=agent1-dev-secret \
@@ -43,25 +43,25 @@ echo "$OBO" | python3 -c 'import sys,json,base64
 b=sys.stdin.read().strip().split(".")[1]; b+="="*(-len(b)%4)
 c=json.loads(base64.urlsafe_b64decode(b)); aud=c.get("aud")
 aud=[aud] if isinstance(aud,str) else (aud or [])
-assert "agent2-github-agent" in aud, "OBO token must target agent2"
+assert "agent2-github-agent" in aud, "OBO token must target the repository agent"
 assert "github.act" in c.get("scope","").split(), "OBO token must carry github.act"
 actor = (c.get("act") or {}).get("sub") or c.get("azp")
-assert actor == "agent1-orchestrator", f"actor should name agent1, got {actor}"
+assert actor == "agent1-orchestrator", f"actor should name the orchestrator agent (agent1-orchestrator), got {actor}"
 print("ok: OBO aud =", aud, "actor =", actor)'
 
-say "3. agent2 AgentCard is public and names the Keycloak scheme"
+say "3. repository agent (agent2) AgentCard is public and names the Keycloak scheme"
 curl -sf "$A2/.well-known/agent-card.json" | python3 -c 'import sys,json
 c=json.load(sys.stdin); s=c.get("securitySchemes") or {}
 assert "keycloak_oauth" in s, "card is missing the keycloak scheme"
 print("ok: securitySchemes =", list(s))'
 
-say "4. agent2 /a2a with no token -> 401 + WWW-Authenticate"
+say "4. repository agent /a2a with no token -> 401 + WWW-Authenticate"
 code=$(curl -s -o /tmp/smoke_body -w '%{http_code}' -D /tmp/smoke_hdr -X POST "$A2/a2a" -d '{}')
 [ "$code" = "401" ] || fail "no-token call should be 401, got $code"
 grep -qi '^www-authenticate:' /tmp/smoke_hdr || fail "missing WWW-Authenticate header"
 echo "ok: 401 with $(grep -i '^www-authenticate:' /tmp/smoke_hdr)"
 
-say "5. agent2 /a2a with the OBO token -> A2A task runs"
+say "5. repository agent /a2a with the OBO token -> A2A task runs"
 REQ='{"jsonrpc":"2.0","id":"smoke","method":"message/send","params":{"message":{"messageId":"m1","role":"user","parts":[{"kind":"text","text":"list my repos"}]}}}'
 resp=$(curl -s -X POST "$A2/a2a" -H "authorization: Bearer $OBO" -H 'content-type: application/json' -d "$REQ")
 echo "$resp"
@@ -72,7 +72,7 @@ state=(r["result"].get("status") or {}).get("state")
 assert state in ("input-required","working","completed"), f"unexpected state {state}"
 print("ok: task state =", state, "(input-required is expected with no stored GitHub token)")'
 
-say "6. agent2 /a2a as an unlisted client -> 403"
+say "6. repository agent /a2a as an unlisted client -> 403"
 ROGUE=$(curl -s "$TOKEN_EP" \
   -d grant_type=client_credentials -d client_id=rogue-agent \
   -d client_secret=rogue-dev-secret -d scope="github.act agent2-audience" \
@@ -106,7 +106,7 @@ echo "$BOB_OBO" | python3 -c 'import sys,json,base64
 b=sys.stdin.read().strip().split(".")[1]; b+="="*(-len(b)%4)
 c=json.loads(base64.urlsafe_b64decode(b)); aud=c.get("aud")
 aud=[aud] if isinstance(aud,str) else (aud or [])
-assert "agent2-github-agent" in aud, "bob OBO token must still target agent2"
+assert "agent2-github-agent" in aud, "bob OBO token must still target the repository agent"
 assert "github.act" not in c.get("scope","").split(), "bob must NOT have github.act"
 print("ok: bob OBO aud =", aud, "scope =", c.get("scope"))'
 code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$A2/a2a" -H "authorization: Bearer $BOB_OBO" -H 'content-type: application/json' -d "$REQ")

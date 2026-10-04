@@ -39,3 +39,21 @@ def get_token(user_sub: str) -> dict | None:
     if not row:
         return None
     return {"access_token": row[0], "refresh_token": row[1], "expires_at": row[2], "scope": row[3]}
+
+
+def delete_token(user_sub: str) -> None:
+    """Forget a GitHub token the MCP server no longer accepts."""
+    _conn.execute("DELETE FROM github_tokens WHERE user_sub=?", (user_sub,))
+    _conn.commit()
+
+
+def list_subs() -> list[tuple[str, int]]:
+    """(user_sub, obtained_at) for every stored GitHub token."""
+    return _conn.execute("SELECT user_sub, obtained_at FROM github_tokens").fetchall()
+
+
+def delete_all() -> int:
+    """Forget every stored GitHub token. Returns how many were deleted."""
+    n = _conn.execute("DELETE FROM github_tokens").rowcount
+    _conn.commit()
+    return n
