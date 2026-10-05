@@ -1,5 +1,5 @@
-"""agent1, the orchestrator agent. Logs alice in, exchanges her token, and calls
-agent2 (the repository agent) over A2A."""
+"""The orchestrator agent. Logs alice in, exchanges her token, and calls
+the repository agent over A2A."""
 from __future__ import annotations
 
 import asyncio
@@ -27,7 +27,7 @@ app = FastAPI()
 
 SESSION_SECRET = os.environ["SESSION_SECRET"]
 signer = URLSafeSerializer(SESSION_SECRET, salt="sid")
-AGENT2_INTERNAL = os.environ["AGENT2_INTERNAL_URL"]
+REPO_AGENT_INTERNAL = os.environ["REPO_AGENT_INTERNAL_URL"]
 
 # session id -> {user_token, id_claims, pkce, state, obo}
 SESSIONS: dict[str, dict] = {}
@@ -131,9 +131,9 @@ async def callback(request: Request, code: str = "", state: str = ""):
     sess["user_name"] = claims.get("preferred_username")
     sess["has_github_role"] = exchange.has_github_caller_role(claims)
     sess["roles"] = (claims.get("realm_access") or {}).get("roles", [])
-    _ev(sid, "h2a.login.token", leg="H2A", kind="token", src="keycloak", dst="agent1",
+    _ev(sid, "h2a.login.token", leg="H2A", kind="token", src="keycloak", dst="orchestrator",
         note=f"Password checked. Keycloak gives the orchestrator agent (Keycloak client "
-             f"agent1-orchestrator, the azp on this token) a user token for "
+             f"orchestrator, the azp on this token) a user token for "
              f"{sess['user_name']}. The sub is a UUID, not the name.",
         token=events.token_view(user_token, "User token"), data={"user": sess["user_name"]})
     # The trace is kept across steps (login, then every ask) until the user
@@ -198,15 +198,15 @@ async def ask(request: Request, prompt: str = Form(...)):
     # Give the repository agent a clean slate for this one call so its rows are
     # only the ones this ask produces. The orchestrator agent's own trace log is never cleared here -
     # it only grows, step by step, until the user clicks "clear token trace".
-    await _reset_agent2_trace(sess.get("user_sub", ""))
+    await _reset_repo_agent_trace(sess.get("user_sub", ""))
 
     has_role = sess.get("has_github_role", False)
     who = sess.get("user_name") or "the user"
-    _ev(sid, "ask.start", leg="H2A", kind="request", src="user", dst="agent1",
+    _ev(sid, "ask.start", leg="H2A", kind="request", src="user", dst="orchestrator",
         note=f'{who} asks the orchestrator agent: "{prompt}". The browser sends it with the '
              f'orchestrator agent\'s session cookie.',
         data={"prompt": prompt})
-    _ev(sid, "h2a.role.check", leg="H2A", kind="check", src="agent1",
+    _ev(sid, "h2a.role.check", leg="H2A", kind="check", src="orchestrator",
         note=(f"The orchestrator agent reads {who}'s roles. github-caller is there, so it will ask "
               "Keycloak for the github.act scope." if has_role else
               f"The orchestrator agent reads {who}'s roles. No github-caller role, so it will NOT "
@@ -214,10 +214,10 @@ async def ask(request: Request, prompt: str = Form(...)):
         check={"name": "github-caller role", "claim": "realm_access.roles",
                "expected": exchange.GITHUB_CALLER_ROLE, "actual": sess.get("roles", []),
                "ok": has_role})
-    _ev(sid, "a2a.exchange.request", leg="A2A", kind="request", src="agent1", dst="keycloak",
+    _ev(sid, "a2a.exchange.request", leg="A2A", kind="request", src="orchestrator", dst="keycloak",
         note="Token exchange (RFC 8693). The orchestrator agent hands over the user token and "
              "its own client secret, and asks for a new token for the repository agent "
-             "(Keycloak audience agent2-github-agent). The repository agent uses an MCP "
+             "(Keycloak audience repo-agent). The repository agent uses an MCP "
              "tool to read the user's GitHub repos.",
         data={"audience": exchange.AUDIENCE,
               "scope": exchange.requested_scope(has_role).split()})
@@ -229,7 +229,7 @@ async def ask(request: Request, prompt: str = Form(...)):
         # it just expired - see README). The exact Keycloak error still
         # goes into the trace note for anyone who wants the raw detail.
         trace.add(sid, "A2A token exchange (RFC 8693)", None, note=str(e), ok=False)
-        _ev(sid, "a2a.exchange.error", leg="A2A", kind="result", src="keycloak", dst="agent1",
+        _ev(sid, "a2a.exchange.error", leg="A2A", kind="result", src="keycloak", dst="orchestrator",
             note="Keycloak refused the exchange. The login token most likely expired. "
                  "Log in again.", http={"status": 401, "body": str(e)[:300]})
         sess.pop("user_token", None)
@@ -250,19 +250,19 @@ async def ask(request: Request, prompt: str = Form(...)):
         "deliberately left out of the exchange request."
     )
     trace.add(sid, "A2A OBO token (orchestrator agent -> repository agent)", obo_token,
-              note=f"RFC 8693 exchange. aud is now agent2-github-agent (the repository agent). {role_note}")
-    _ev(sid, "a2a.exchange.token", leg="A2A", kind="token", src="keycloak", dst="agent1",
+              note=f"RFC 8693 exchange. aud is now repo-agent (the repository agent). {role_note}")
+    _ev(sid, "a2a.exchange.token", leg="A2A", kind="token", src="keycloak", dst="orchestrator",
         note="Keycloak gives back an on-behalf-of (OBO) token. Same sub, but aud is now "
-             "agent2-github-agent (the repository agent), and act/azp name agent1-orchestrator "
+             "repo-agent (the repository agent), and act/azp name orchestrator "
              "(the orchestrator agent) as the caller.",
         token=events.token_view(obo_token, "OBO token"),
         data={"before": events.token_view(sess["user_token"], "User token")})
-    _ev(sid, "a2a.call", leg="A2A", kind="request", src="agent1", dst="agent2",
+    _ev(sid, "a2a.call", leg="A2A", kind="request", src="orchestrator", dst="repo_agent",
         note="The orchestrator agent calls the repository agent over A2A (JSON-RPC "
              "message/send) with the OBO token as a Bearer token.", data={"method": "message/send"})
 
     try:
-        result = await a2a_client.ask_agent2(obo_token, prompt)
+        result = await a2a_client.ask_repo_agent(obo_token, prompt)
     except A2AClientHTTPError as e:
         # The repository agent's middleware refused the OBO token before the executor ever
         # ran. The streaming a2a-sdk client checks the response's
@@ -273,10 +273,10 @@ async def ask(request: Request, prompt: str = Form(...)):
         # (the same path the break-it buttons use) to get the repository agent's actual
         # status and body, and report those instead.
         raw = await a2a_client.raw_a2a_call(obo_token, repeat=True)
-        await _merge_agent2_trace(sid)
+        await _merge_repo_agent_trace(sid)
         trace.add(sid, "A2A call to the repository agent refused", None,
                   note=f"The repository agent answered {raw['status']}: {raw['body']}", ok=False)
-        _ev(sid, "a2a.refused", leg="A2A", kind="result", src="agent2", dst="user",
+        _ev(sid, "a2a.refused", leg="A2A", kind="result", src="repo_agent", dst="user",
             note=f"The repository agent refused the call with {raw['status']}. Identity was fine. "
                  "Permission was not.",
             http={"status": raw["status"], "body": raw["body"]})
@@ -286,19 +286,19 @@ async def ask(request: Request, prompt: str = Form(...)):
         )
 
     # Pull the repository agent's own trace rows and merge them in.
-    await _merge_agent2_trace(sid)
+    await _merge_repo_agent_trace(sid)
 
     if result.get("input_required"):
-        _ev(sid, "a2a.input_required", leg="CONSENT", kind="result", src="agent1", dst="user",
+        _ev(sid, "a2a.input_required", leg="CONSENT", kind="result", src="orchestrator", dst="user",
             note="The repository agent needs the user's OK for GitHub first. Open the consent link, "
                  "then ask again.", data={"ticket_url": result.get("ticket_url")})
     elif any(s["state"] == "failed" for s in result.get("states", [])):
-        _ev(sid, "a2a.failed", leg="MCP", kind="result", src="agent1", dst="user",
+        _ev(sid, "a2a.failed", leg="MCP", kind="result", src="orchestrator", dst="user",
             note="The repository agent could not finish: the MCP tool call failed. The "
                  "tokens were fine, the tool was not.",
             data={"final_text": (result.get("final_text") or "")[:1500]})
     else:
-        _ev(sid, "a2a.done", leg="A2A", kind="result", src="agent1", dst="user",
+        _ev(sid, "a2a.done", leg="A2A", kind="result", src="orchestrator", dst="user",
             note="The repository agent's answer comes back through the orchestrator agent to "
                  "the user.",
             data={"states": [s["state"] for s in result.get("states", [])],
@@ -307,18 +307,18 @@ async def ask(request: Request, prompt: str = Form(...)):
     return JSONResponse(result)
 
 
-async def _reset_agent2_trace(sub: str):
+async def _reset_repo_agent_trace(sub: str):
     try:
         async with httpx.AsyncClient(timeout=10) as hc:
-            await hc.post(f"{AGENT2_INTERNAL}/debug/trace/clear", params={"sub": sub})
+            await hc.post(f"{REPO_AGENT_INTERNAL}/debug/trace/clear", params={"sub": sub})
     except Exception:  # noqa: BLE001
         pass
 
 
-async def _merge_agent2_trace(sid: str):
+async def _merge_repo_agent_trace(sid: str):
     try:
         async with httpx.AsyncClient(timeout=10) as hc:
-            r = await hc.get(f"{AGENT2_INTERNAL}/debug/trace", params={"sub": SESSIONS[sid].get("user_sub", "")})
+            r = await hc.get(f"{REPO_AGENT_INTERNAL}/debug/trace", params={"sub": SESSIONS[sid].get("user_sub", "")})
         for row in r.json().get("rows", []):
             # The repository agent's /debug/trace never sends the raw token back over the
             # wire, only the already-decoded summary/body and a truncated
@@ -339,7 +339,7 @@ async def clear_trace(request: Request):
     sid = _sid(request)
     trace.clear(sid)
     sess = SESSIONS.get(sid) or {}
-    await _reset_agent2_trace(sess.get("user_sub", ""))
+    await _reset_repo_agent_trace(sess.get("user_sub", ""))
     return {"ok": True}
 
 
@@ -393,7 +393,7 @@ async def events_clear(request: Request):
 
 @app.post("/events/ingest")
 async def events_ingest(request: Request):
-    """The repository agent (agent2) posts its events here. It only knows the user's sub, so the
+    """The repository agent posts its events here. It only knows the user's sub, so the
     event goes to every browser session logged in as that user."""
     if not EVENTS_KEY or request.headers.get("x-events-key") != EVENTS_KEY:
         raise HTTPException(403, "bad events key")
@@ -406,7 +406,7 @@ async def events_ingest(request: Request):
 
 
 @app.get("/.well-known/agent-card.json")
-async def agent1_card():
+async def orchestrator_card():
     """The orchestrator agent is not a full A2A server (its /ask endpoint is plain REST, not
     JSON-RPC). This card exists only so the web page can show it next to
     the repository agent's real A2A card, for comparison."""
@@ -415,7 +415,7 @@ async def agent1_card():
         "description": "Logs the end user in, exchanges their token (RFC 8693), "
                         "and calls the repository agent over A2A on their behalf. Not itself an "
                         "A2A server - /ask is a plain REST endpoint for this demo's web page.",
-        "url": os.environ["AGENT1_BASE_URL"],
+        "url": os.environ["ORCHESTRATOR_BASE_URL"],
         "version": "0.1.0",
         "capabilities": {"streaming": False, "pushNotifications": False},
         "defaultInputModes": ["text/plain"],
@@ -434,8 +434,8 @@ async def agent1_card():
 
 async def _local_junk_token(sub: str = "alice", **over) -> str:
     body = {
-        "sub": sub, "iss": oidc.ISSUER, "aud": "agent2-github-agent",
-        "azp": "agent1-orchestrator", "scope": "github.act",
+        "sub": sub, "iss": oidc.ISSUER, "aud": "repo-agent",
+        "azp": "orchestrator", "scope": "github.act",
         "iat": int(time.time()), "exp": int(time.time()) + 300,
     }
     body.update(over)
@@ -455,7 +455,7 @@ async def break_it(kind: str, request: Request):
         label = "Break: token signed by the wrong key, aud=some-other-service"
     elif kind == "raw-user":
         token = sess.get("user_token")
-        label = "Break: raw user token (no exchange), aud is not the repository agent (agent2-github-agent)"
+        label = "Break: raw user token (no exchange), aud is not the repository agent (repo-agent)"
     elif kind == "expired":
         token = await _local_junk_token(sub=sub, exp=int(time.time()) - 60)
         label = "Break: expired token"
@@ -478,7 +478,7 @@ async def _rogue_token() -> str:
         "grant_type": "client_credentials",
         "client_id": os.environ.get("ROGUE_CLIENT_ID", "rogue-agent"),
         "client_secret": os.environ.get("ROGUE_SECRET", "rogue-dev-secret"),
-        "scope": "github.act agent2-audience",
+        "scope": "github.act repo-agent-audience",
     }
     async with httpx.AsyncClient(timeout=15) as hc:
         r = await hc.post(oidc.TOKEN_URL, data=data)

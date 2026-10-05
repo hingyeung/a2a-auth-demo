@@ -58,7 +58,7 @@ async def _ask_for_consent(updater: TaskUpdater, sub: str, why: str) -> None:
     ticket = github_oauth.mint_ticket(sub)
     url = github_oauth.consent_url(ticket)
     await events.forward(sub, events.make(
-        "consent.needed", leg="CONSENT", kind="result", src="agent2", dst="agent1",
+        "consent.needed", leg="CONSENT", kind="result", src="repo_agent", dst="orchestrator",
         note=f"{why} The repository agent answers input-required with a consent link. The link "
              "holds a signed ticket with the user's sub, valid 5 minutes.",
         data={"ticket_url": url, "a2a_state": "input-required"}))
@@ -86,7 +86,7 @@ class GitHubAgentExecutor(AgentExecutor):
 
         gh = store.get_token(sub)
         await events.forward(sub, events.make(
-            "mcp.token.lookup", leg="MCP", kind="check", src="agent2",
+            "mcp.token.lookup", leg="MCP", kind="check", src="repo_agent",
             note=("The repository agent looks in its token store for this sub's GitHub "
                   "token. Found it." if gh else
                   "The repository agent looks in its token store for this sub's GitHub token. "
@@ -107,7 +107,7 @@ class GitHubAgentExecutor(AgentExecutor):
         )
 
         await events.forward(sub, events.make(
-            "mcp.call", leg="MCP", kind="request", src="agent2", dst="mcp",
+            "mcp.call", leg="MCP", kind="request", src="repo_agent", dst="mcp",
             note=f"The repository agent calls the MCP tool {tool} with the user's own GitHub token "
                  "as a Bearer token.",
             token=events.token_view(gh["access_token"], "GitHub token"),
@@ -118,7 +118,7 @@ class GitHubAgentExecutor(AgentExecutor):
         err = result.get("error")
         rejected = isinstance(err, str) and err.startswith("MCP rejected the token")
         await events.forward(sub, events.make(
-            "mcp.result", leg="MCP", kind="result", src="mcp", dst="agent2",
+            "mcp.result", leg="MCP", kind="result", src="mcp", dst="repo_agent",
             note=("The MCP server checks the GitHub token and runs the tool. Treasure!"
                   if "error" not in result else
                   "The MCP server refused the stored GitHub token (401). It may be revoked or "

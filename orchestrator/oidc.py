@@ -12,9 +12,9 @@ import httpx
 ISSUER = os.environ["KEYCLOAK_ISSUER"]
 INTERNAL = os.environ["KEYCLOAK_INTERNAL_URL"]
 REALM = os.environ["KEYCLOAK_REALM"]
-CLIENT_ID = os.environ["AGENT1_CLIENT_ID"]
-SECRET = os.environ["AGENT1_SECRET"]
-BASE_URL = os.environ["AGENT1_BASE_URL"]
+CLIENT_ID = os.environ["ORCHESTRATOR_CLIENT_ID"]
+SECRET = os.environ["ORCHESTRATOR_SECRET"]
+BASE_URL = os.environ["ORCHESTRATOR_BASE_URL"]
 
 REDIRECT_URI = f"{BASE_URL}/callback"
 # Browser must reach these, so they use the public issuer URL.

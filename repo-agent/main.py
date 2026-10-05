@@ -1,4 +1,4 @@
-"""agent2, the repository agent: it uses an MCP tool to read the user's GitHub
+"""The repository agent: it uses an MCP tool to read the user's GitHub
 repos. A2A server plus the GitHub consent routes."""
 from __future__ import annotations
 

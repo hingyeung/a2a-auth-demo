@@ -2,7 +2,7 @@
 
 Two jobs, kept apart:
   - Caller control: is this really the orchestrator agent (Keycloak client
-    agent1-orchestrator)? (signature, aud, azp allowlist, scope)
+    orchestrator)? (signature, aud, azp allowlist, scope)
   - User identity: who is the user? (sub, straight out of the verified token)
 """
 from __future__ import annotations
@@ -19,11 +19,11 @@ from common import events, jwt_verify
 ISSUER = os.environ["KEYCLOAK_ISSUER"]
 INTERNAL = os.environ["KEYCLOAK_INTERNAL_URL"]
 REALM = os.environ["KEYCLOAK_REALM"]
-AUDIENCE = os.environ["AGENT2_AUDIENCE"]
+AUDIENCE = os.environ["REPO_AGENT_AUDIENCE"]
 JWKS_URL = f"{INTERNAL}/realms/{REALM}/protocol/openid-connect/certs"
 
 ALLOWED_CALLERS = set(
-    c.strip() for c in os.environ.get("ALLOWED_CALLERS", "agent1-orchestrator").split(",") if c.strip()
+    c.strip() for c in os.environ.get("ALLOWED_CALLERS", "orchestrator").split(",") if c.strip()
 )
 REQUIRED_SCOPE = os.environ.get("REQUIRED_SCOPE", "github.act")
 
@@ -37,7 +37,7 @@ async def _check(sub, name: str, ok: bool, note: str, *, claim: str = "",
                  expected=None, actual=None, status: int | None = None, body: str = "") -> None:
     """Tell the arcade page about one gate check. Display only."""
     await events.forward(sub, events.make(
-        f"a2a.check.{name}", leg="A2A", kind="check", src="agent2", dst="agent2", note=note,
+        f"a2a.check.{name}", leg="A2A", kind="check", src="repo_agent", dst="repo_agent", note=note,
         check={"name": name, "claim": claim, "expected": expected, "actual": actual, "ok": ok},
         http={"status": status, "body": body} if status else None,
     ))

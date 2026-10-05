@@ -1,4 +1,4 @@
-"""A2A client. Resolve the repository agent's card (agent2), then stream one message with the OBO token."""
+"""A2A client. Resolve the repository agent's card, then stream one message with the OBO token."""
 from __future__ import annotations
 
 import os
@@ -11,7 +11,7 @@ from a2a.client.auth.interceptor import AuthInterceptor
 from a2a.client.card_resolver import A2ACardResolver
 from a2a.types import Message, Part, Role, TaskState, TextPart, TransportProtocol
 
-AGENT2 = os.environ["AGENT2_INTERNAL_URL"]
+REPO_AGENT = os.environ["REPO_AGENT_INTERNAL_URL"]
 
 
 class StaticCredentialService(CredentialService):
@@ -43,14 +43,14 @@ def _text_of(obj) -> str:
     return " ".join(out)
 
 
-async def ask_agent2(obo: str, prompt: str) -> dict:
+async def ask_repo_agent(obo: str, prompt: str) -> dict:
     """Return dict: states list, final_text, input_required flag, ticket_url."""
     async with httpx.AsyncClient(timeout=30) as hc:
-        card = await A2ACardResolver(hc, AGENT2).get_agent_card()
+        card = await A2ACardResolver(hc, REPO_AGENT).get_agent_card()
         # The public card names the browser-facing URL. Inside the Docker network
         # the orchestrator agent must reach the repository agent by its service
-        # name (agent2).
-        card.url = f"{AGENT2}/a2a"
+        # name.
+        card.url = f"{REPO_AGENT}/a2a"
         cfg = ClientConfig(
             httpx_client=hc,
             streaming=True,
@@ -118,7 +118,7 @@ async def raw_a2a_call(token: str | None, *, repeat: bool = False) -> dict:
     if repeat:
         headers["x-arcade-repeat"] = "1"
     async with httpx.AsyncClient(timeout=15) as hc:
-        r = await hc.post(f"{AGENT2}/a2a", json=body, headers=headers)
+        r = await hc.post(f"{REPO_AGENT}/a2a", json=body, headers=headers)
     return {
         "status": r.status_code,
         "www_authenticate": r.headers.get("www-authenticate"),
