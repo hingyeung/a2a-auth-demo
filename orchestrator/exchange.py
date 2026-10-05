@@ -1,4 +1,4 @@
-"""RFC 8693 token exchange. Turn the logged-in user's token into an OBO token for the repository agent (agent2)."""
+"""RFC 8693 token exchange. Turn the logged-in user's token into an OBO token for the repository agent."""
 from __future__ import annotations
 
 import os
@@ -7,7 +7,7 @@ import httpx
 
 from oidc import CLIENT_ID, SECRET, TOKEN_URL
 
-AUDIENCE = os.environ["AGENT2_AUDIENCE"]
+AUDIENCE = os.environ["REPO_AGENT_AUDIENCE"]
 GITHUB_CALLER_ROLE = "github-caller"
 
 
@@ -26,11 +26,11 @@ def has_github_caller_role(user_claims: dict) -> bool:
 
 
 def requested_scope(include_github_scope: bool) -> str:
-    # agent2-audience and actor.agent1 are requested for every user: audience
+    # repo-agent-audience and actor.orchestrator are requested for every user: audience
     # (who the token is for) and actor (who is calling) are not permissions,
     # they are just facts about this call. github.act (what the caller is
     # allowed to do there) is the one gated by include_github_scope.
-    scope = "openid agent2-audience actor.agent1"
+    scope = "openid repo-agent-audience actor.orchestrator"
     if include_github_scope:
         scope += " github.act"
     return scope

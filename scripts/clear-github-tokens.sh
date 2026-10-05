@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Delete the GitHub tokens the repository agent (agent2) has stored.
+# Delete the GitHub tokens the repository agent has stored.
 # The next ask then needs GitHub consent again.
 #
 # Usage:
@@ -20,7 +20,7 @@ cd "$(dirname "$0")/.."
 usage() { sed -n '5,8p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
-agent2_py() { docker compose exec -T agent2 python -c "$1"; }
+repo_agent_py() { docker compose exec -T repo-agent python -c "$1"; }
 
 admin_token() {
   local body
@@ -38,7 +38,7 @@ case "$1" in
   --list)
     AT=$(admin_token)
     LIST=$(mktemp)
-    agent2_py 'import store
+    repo_agent_py 'import store
 for sub, at in store.list_subs(): print(sub, at)' > "$LIST"
     [ -s "$LIST" ] || echo "no GitHub tokens stored"
     while read -r sub at; do
@@ -49,7 +49,7 @@ for sub, at in store.list_subs(): print(sub, at)' > "$LIST"
     rm -f "$LIST"
     ;;
   --all)
-    agent2_py 'import store; print("deleted", store.delete_all(), "token(s)")'
+    repo_agent_py 'import store; print("deleted", store.delete_all(), "token(s)")'
     ;;
   -*) usage 1 ;;
   *)
@@ -61,7 +61,7 @@ for sub, at in store.list_subs(): print(sub, at)' > "$LIST"
     SUB=$(printf '%s' "$USERS" | python3 -c 'import sys,json;u=json.load(sys.stdin);print(u[0]["id"] if u else "")')
     [ -n "$SUB" ] || fail "no Keycloak user named $1"
     # Values go in as env vars, never pasted into the Python source.
-    docker compose exec -T -e SUB="$SUB" -e NAME="$1" agent2 python -c 'import os, store
+    docker compose exec -T -e SUB="$SUB" -e NAME="$1" repo-agent python -c 'import os, store
 sub, name = os.environ["SUB"], os.environ["NAME"]
 had = store.get_token(sub) is not None
 store.delete_token(sub)

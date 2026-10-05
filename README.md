@@ -11,13 +11,13 @@ See how one end-user identity travels through three legs:
 ### Who is who
 
 The friendly names are used in the pages and in this README. The technical IDs
-stay as they are in code, Docker and Keycloak, so you will see them in tokens
-(for example `azp: agent1-orchestrator`).
+are used in code, Docker and Keycloak, so you will see them in tokens
+(for example `azp: orchestrator`).
 
 | friendly name | 8-bit game label | what it does | service / folder | Keycloak ID |
 |---------------|------------------|--------------|------------------|-------------|
-| orchestrator agent | ORCHESTRATOR | logs the user in, swaps their token, calls the repository agent | `agent1` (port 9001) | client `agent1-orchestrator` |
-| repository agent | REPO AGENT | uses an MCP tool to read the user's GitHub repos | `agent2` (port 9002) | audience `agent2-github-agent` |
+| orchestrator agent | ORCHESTRATOR | logs the user in, swaps their token, calls the repository agent | `orchestrator` (port 9001) | client `orchestrator` |
+| repository agent | REPO AGENT | uses an MCP tool to read the user's GitHub repos | `repo-agent` (port 9002) | audience `repo-agent` |
 | MCP server (mock) | MCP | the GitHub MCP server stand-in | `mockmcp` (port 9003) | none |
 
 Production would put Okta plus TrueFoundry in front of this. The demo removes
@@ -42,7 +42,13 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Four containers start: `keycloak`, `agent1` (orchestrator agent), `agent2`
+Upgrading from a checkout that still used `agent1`/`agent2`: run
+`docker compose down --remove-orphans` first and re-copy `.env.example` to
+`.env`. Otherwise the old `agent1`/`agent2` containers keep ports 9001/9002,
+and the running Keycloak keeps the old realm (clients `agent1-orchestrator`
+and `agent2-github-agent`), so login and the token exchange fail.
+
+Four containers start: `keycloak`, `orchestrator` (orchestrator agent), `repo-agent`
 (repository agent), `mockmcp`.
 Wait until Keycloak logs `Running the server`.
 
@@ -58,8 +64,8 @@ Then:
 5. Ask again. The **token trace** panel keeps a row for every step so far -
    login, then each ask:
    - the user token (H2A)
-   - the OBO token (A2A) with `aud=agent2-github-agent` and an actor
-     naming `agent1-orchestrator` (the orchestrator agent)
+   - the OBO token (A2A) with `aud=repo-agent` and an actor
+     naming `orchestrator` (the orchestrator agent)
    - the GitHub token used at the MCP server
    Click **Clear token trace** to empty the panel and start over.
 6. **Now try bob.** Click **Logout**, pick `bob` in the dropdown, sign in as
@@ -114,13 +120,13 @@ flow does not depend on them.
 | file | what it holds |
 |------|---------------|
 | `common/common/events.py` | event shape, the in-memory bus, the repository agent's `forward()` |
-| `agent1/main.py` | `/arcade`, `/events`, `/events/ingest`, and the H2A/A2A emit points |
-| `agent2/auth.py` | one event per gate check |
-| `agent2/github_oauth.py`, `agent2/executor.py` | consent and MCP events |
-| `agent1/static/arcade/` | the page: Phaser 3 from a CDN, no build step |
+| `orchestrator/main.py` | `/arcade`, `/events`, `/events/ingest`, and the H2A/A2A emit points |
+| `repo-agent/auth.py` | one event per gate check |
+| `repo-agent/github_oauth.py`, `repo-agent/executor.py` | consent and MCP events |
+| `orchestrator/static/arcade/` | the page: Phaser 3 from a CDN, no build step |
 
 Art: [Kenney](https://kenney.nl) Tiny Town and Tiny Dungeon (CC0), see
-`agent1/static/arcade/assets/LICENSE-kenney.txt`.
+`orchestrator/static/arcade/assets/LICENSE-kenney.txt`.
 
 ## Sequence diagram: alice's auth flow
 
@@ -136,7 +142,7 @@ the string `alice` - the username lives in `preferred_username`, and everything
 downstream (the signed ticket, the token store) keys off the UUID. And GitHub's
 authorization server publishes no RFC 8414 metadata at the well-known path, so
 `mcp_client.discover()` falls back to `<as>/authorize` and `<as>/access_token`
-(see the comment in `agent2/mcp_client.py`).
+(see the comment in `repo-agent/mcp_client.py`).
 
 ## Sequence diagram: bob's auth flow
 
@@ -179,19 +185,19 @@ scripts/clear-github-tokens.sh --all     # everyone
 | file | what it teaches |
 |------|-----------------|
 | `keycloak/realm-export.json` | the clients, scopes and mappers, no console clicking |
-| `agent1/exchange.py` | the RFC 8693 token exchange call |
-| `agent2/auth.py` | the middleware that checks caller and reads the user identity |
-| `agent2/agent_card.py` | the card states the auth need; the middleware enforces it |
-| `agent2/github_oauth.py` | the signed ticket that carries identity into the browser leg |
-| `agent2/mcp_client.py` | one MCP code path: 401 -> discovery -> PKCE -> token -> tool call |
+| `orchestrator/exchange.py` | the RFC 8693 token exchange call |
+| `repo-agent/auth.py` | the middleware that checks caller and reads the user identity |
+| `repo-agent/agent_card.py` | the card states the auth need; the middleware enforces it |
+| `repo-agent/github_oauth.py` | the signed ticket that carries identity into the browser leg |
+| `repo-agent/mcp_client.py` | one MCP code path: 401 -> discovery -> PKCE -> token -> tool call |
 
 ## Three questions, kept apart
 
 **Is this really the orchestrator agent?** Three layers, all needed:
 
 1. Keycloak only mints the OBO token for a confidential client that holds
-   `AGENT1_SECRET`.
-2. The token `aud` is `agent2-github-agent`, so a raw user token is refused.
+   `ORCHESTRATOR_SECRET`.
+2. The token `aud` is `repo-agent`, so a raw user token is refused.
 3. The repository agent's own allowlist on `azp` (`ALLOWED_CALLERS`). Audience alone is not
    enough, because another Keycloak client could get a token with that audience.
    The allowlist is the check that refuses an unknown agent.
@@ -217,8 +223,8 @@ the orchestrator agent, before it asks: `exchange.py` checks the logged-in user'
 
 To keep that decision testable in isolation, the audience (`aud`, "who this
 token is for") is no longer tied to the `github.act` scope. It now comes from
-its own `agent2-audience` scope, requested for every user. So bob's OBO token
-still has `aud=agent2-github-agent` and passes the repository agent's caller allowlist and the
+its own `repo-agent-audience` scope, requested for every user. So bob's OBO token
+still has `aud=repo-agent` and passes the repository agent's caller allowlist and the
 signature/audience checks - it is missing exactly one thing, `github.act` in
 `scope`, and the repository agent's middleware rejects it for exactly that reason:
 
@@ -245,7 +251,7 @@ trace panel see is the real thing: `403 {"error":"missing scope github.act"}`.
 
 Keycloak's standard token exchange does **not** put an `act` claim on the new
 token by itself. In this demo the `act` claim is added by a **hardcoded-claim
-mapper** on the `actor.agent1` client scope, which only the orchestrator agent (`agent1-orchestrator`) has. See
+mapper** on the `actor.orchestrator` client scope, which only the orchestrator agent (`orchestrator`) has. See
 `keycloak/realm-export.json`. The actor is also provable from `azp` (the client
 that asked for the token). The middleware accepts either `azp` or `act.sub`
 against `ALLOWED_CALLERS`.
@@ -279,11 +285,11 @@ GitHub path is optional proof and is less exercised than the mock path.
 ## Where this demo simplifies (read this)
 
 - Secrets live in `.env` and the realm export in plain text. Not for production.
-- `SESSION_SECRET` and `AGENT2_TICKET_KEY` are dev signing keys.
+- `SESSION_SECRET` and `REPO_AGENT_TICKET_KEY` are dev signing keys.
 - The Keycloak realm has `sslRequired: none` and a fixed HTTP issuer
   (`http://localhost:8081`) so tokens read the same from the browser and from
   the containers.
-- `agent1-orchestrator` (the orchestrator agent's Keycloak client) also has the password grant on, only so `smoke.sh` can
+- `orchestrator` (the orchestrator agent's Keycloak client) also has the password grant on, only so `smoke.sh` can
   skip the browser. The teaching flow uses authorization code plus PKCE.
 - `rogue-agent` exists only to power the "unlisted client" button.
 - No push notifications, no LLM, no production secret handling.
@@ -319,6 +325,6 @@ or a full `down` + `up`) for the change to take effect.
 ## Keycloak field name
 
 The client attribute that turns on standard token exchange is
-`standard.token.exchange.enabled: "true"` on `agent1-orchestrator`
+`standard.token.exchange.enabled: "true"` on `orchestrator`
 (Keycloak 26). Public clients cannot do standard token exchange, so the
 orchestrator agent is confidential even though it also runs the browser login.

@@ -12,15 +12,15 @@ const $ = (id) => document.getElementById(id);
 const W = 320, H = 180, ROAD_Y = 118;
 
 // Where each actor stands, and the label under its building. Keys are the
-// technical IDs used in event src/dst (agent1 = orchestrator agent, agent2 =
+// technical IDs used in event src/dst (orchestrator = orchestrator agent, repo_agent =
 // repository agent); labels are what the player reads.
 const PLACES = {
   user:     { x: 24,  y: ROAD_Y, label: "HOME" },
   keycloak: { x: 88,  y: 70,     label: "KEYCLOAK" },
-  agent1:   { x: 136, y: ROAD_Y, label: "ORCHESTRATOR" },
+  orchestrator: { x: 136, y: ROAD_Y, label: "ORCHESTRATOR" },
   // labelDy: GATE sits between two long labels, so its label drops a row.
   gate:     { x: 184, y: ROAD_Y, label: "GATE", labelDy: 10 },
-  agent2:   { x: 232, y: ROAD_Y, label: "REPO AGENT" },
+  repo_agent: { x: 232, y: ROAD_Y, label: "REPO AGENT" },
   mcp:      { x: 296, y: ROAD_Y, label: "MCP" },
   // GitHub's login server (the OAuth authorization server for GitHub tokens).
   // Its own building, apart from the MCP vault: it gives out GitHub tokens,
@@ -41,7 +41,7 @@ const BUILDINGS = [
   ["dungeon", 17, 4, [[57, 58, 59], [57, 58, 59], [45, 46, 47]]],      // MCP vault
   ["dungeon", 15, 1, [[9, 10, 11], [21, 22, 23], [33, 34, 35]]],       // GitHub login server
 ];
-const CHAR = { alice: 99, bob: 88, keycloak: 84, agent1: 96, agent2: 112, mcp: 87, github: 100 };
+const CHAR = { alice: 99, bob: 88, keycloak: 84, orchestrator: 96, repo_agent: 112, mcp: 87, github: 100 };
 const ITEM = { userKey: 117, oboKey: 117, ghCoin: 93, scroll: 83, chest: 89, chestOpen: 91 };
 
 // ---------------- state ----------------
@@ -101,13 +101,13 @@ class Town extends Phaser.Scene {
     }
 
     this.chest = this.add.image(PLACES.mcp.x + 14, ROAD_Y - 4, "dungeon", ITEM.chest);
-    this.store = this.add.image(PLACES.agent2.x + 14, ROAD_Y - 4, "dungeon", ITEM.chest).setVisible(false);
+    this.store = this.add.image(PLACES.repo_agent.x + 14, ROAD_Y - 4, "dungeon", ITEM.chest).setVisible(false);
 
     this.actors = {
       user: this.add.sprite(PLACES.user.x, ROAD_Y, "dungeon", CHAR[player]),
       keycloak: this.add.sprite(PLACES.keycloak.x, PLACES.keycloak.y, "dungeon", CHAR.keycloak),
-      agent1: this.add.sprite(PLACES.agent1.x, ROAD_Y, "dungeon", CHAR.agent1),
-      agent2: this.add.sprite(PLACES.agent2.x, ROAD_Y, "dungeon", CHAR.agent2),
+      orchestrator: this.add.sprite(PLACES.orchestrator.x, ROAD_Y, "dungeon", CHAR.orchestrator),
+      repo_agent: this.add.sprite(PLACES.repo_agent.x, ROAD_Y, "dungeon", CHAR.repo_agent),
       mcp: this.add.sprite(PLACES.mcp.x - 10, ROAD_Y, "dungeon", CHAR.mcp),
       github: this.add.sprite(PLACES.github.x, PLACES.github.y, "dungeon", CHAR.github),
     };
@@ -260,26 +260,26 @@ async function animate(ev) {
       break;
     case "ask.start":
       s.resetStage();
-      await s.walk("user", "agent1");
+      await s.walk("user", "orchestrator");
       await s.pop("user", "LIST MY REPOS!");
       break;
     case "h2a.role.check":
       s.walk("user");
-      await s.pop("agent1", ev.check.ok ? "ROLE OK" : "NO ROLE", ev.check.ok ? "#5fd36a" : "#ff5a5a");
+      await s.pop("orchestrator", ev.check.ok ? "ROLE OK" : "NO ROLE", ev.check.ok ? "#5fd36a" : "#ff5a5a");
       ev.check.ok ? Sfx.pass() : Sfx.deny();
       break;
     case "a2a.exchange.request":
       s.resetLamps();
-      await s.walk("agent1", "keycloak");
-      await s.pop("agent1", "SWAP PLEASE");
+      await s.walk("orchestrator", "keycloak");
+      await s.pop("orchestrator", "SWAP PLEASE");
       break;
     case "a2a.exchange.token":
       Sfx.mint();
-      await s.fly(ITEM.oboKey, "town", "keycloak", "agent1", 0xffcf4a);
-      await s.walk("agent1");
+      await s.fly(ITEM.oboKey, "town", "keycloak", "orchestrator", 0xffcf4a);
+      await s.walk("orchestrator");
       break;
     case "a2a.call":
-      await s.walk("agent1", "gate");
+      await s.walk("orchestrator", "gate");
       break;
     case "a2a.check.bearer": case "a2a.check.jwt": case "a2a.check.caller": case "a2a.check.scope": {
       const i = GATE_LAMP[ev.check.name];
@@ -291,41 +291,41 @@ async function animate(ev) {
       } else {
         Sfx.deny();
         await s.pop("gate", String(ev.http?.status || "NO"), "#ff5a5a", 700);
-        await s.shake("agent1");
+        await s.shake("orchestrator");
       }
       break;
     }
     case "a2a.failed":
     case "a2a.refused":
-      await s.walk("agent1");
+      await s.walk("orchestrator");
       Sfx.over();
       await s.bigText("GAME OVER", "#ff5a5a");
       break;
     case "mcp.token.lookup":
       await s.gateOpen(false);
-      await s.pop("agent2", ev.check.ok ? "TOKEN FOUND" : "NO TOKEN", ev.check.ok ? "#5fd36a" : "#ffcf4a");
+      await s.pop("repo_agent", ev.check.ok ? "TOKEN FOUND" : "NO TOKEN", ev.check.ok ? "#5fd36a" : "#ffcf4a");
       break;
     case "consent.needed":
-      await s.fly(ITEM.scroll, "town", "agent2", "agent1");
-      await s.walk("agent1");
+      await s.fly(ITEM.scroll, "town", "repo_agent", "orchestrator");
+      await s.walk("orchestrator");
       break;
     case "a2a.input_required":
-      await s.fly(ITEM.scroll, "town", "agent1", "user");
+      await s.fly(ITEM.scroll, "town", "orchestrator", "user");
       await s.pop("user", "CONSENT LINK!", "#d38bff");
       break;
     case "consent.ticket":
-      await s.walk("user", "agent2");
-      await s.pop("agent2", "TICKET OK", "#5fd36a");
+      await s.walk("user", "repo_agent");
+      await s.pop("repo_agent", "TICKET OK", "#5fd36a");
       break;
     case "mcp.probe":
-      await s.walk("agent2", "mcp");
+      await s.walk("repo_agent", "mcp");
       await s.pop("mcp", String(ev.http?.status || 401), "#ff5a5a");
       break;
     case "mcp.discover":
-      await s.pop("agent2", "WHO GIVES TOKENS?", "#ffcf4a", 800);
+      await s.pop("repo_agent", "WHO GIVES TOKENS?", "#ffcf4a", 800);
       await s.pop("mcp", "ASK GITHUB", "#ffcf4a", 800);
       await s.pop("github", "THAT'S ME", "#ffcf4a", 800);
-      await s.walk("agent2");
+      await s.walk("repo_agent");
       break;
     case "consent.authorize":
       await s.walk("user", "github");
@@ -334,18 +334,18 @@ async function animate(ev) {
       break;
     case "consent.callback":
       await s.pop("github", "HERE'S A CODE", "#d38bff", 700);
-      await s.walk("user", "agent2");
-      await s.fly(ITEM.scroll, "town", "user", "agent2");
-      await s.pop("agent2", "TICKET OK", "#5fd36a", 600);
+      await s.walk("user", "repo_agent");
+      await s.fly(ITEM.scroll, "town", "user", "repo_agent");
+      await s.pop("repo_agent", "TICKET OK", "#5fd36a", 600);
       break;
     case "consent.swap":
-      await s.walk("agent2", "github");
-      await s.pop("agent2", "CODE + VERIFIER", "#ffcf4a");
+      await s.walk("repo_agent", "github");
+      await s.pop("repo_agent", "CODE + VERIFIER", "#ffcf4a");
       break;
     case "consent.token":
       Sfx.mint();
-      await s.fly(ITEM.ghCoin, "town", "github", "agent2");
-      await s.walk("agent2");
+      await s.fly(ITEM.ghCoin, "town", "github", "repo_agent");
+      await s.walk("repo_agent");
       break;
     case "consent.stored":
       s.store.setVisible(true);
@@ -353,8 +353,8 @@ async function animate(ev) {
       await s.walk("user");
       break;
     case "mcp.call":
-      await s.walk("agent2", "mcp");
-      await s.fly(ITEM.ghCoin, "town", "agent2", "mcp");
+      await s.walk("repo_agent", "mcp");
+      await s.fly(ITEM.ghCoin, "town", "repo_agent", "mcp");
       break;
     case "mcp.result":
       if (ev.data?.ok) {
@@ -365,18 +365,18 @@ async function animate(ev) {
         Sfx.deny();
         await s.pop("mcp", "401", "#ff5a5a");
       }
-      await s.walk("agent2");
+      await s.walk("repo_agent");
       break;
     case "a2a.done":
-      await s.fly(ITEM.chestOpen, "dungeon", "agent2", "agent1");
-      await s.walk("user", "agent1");
+      await s.fly(ITEM.chestOpen, "dungeon", "repo_agent", "orchestrator");
+      await s.walk("user", "orchestrator");
       Sfx.win();
       await s.bigText("STAGE CLEAR!", "#5fd36a");
       break;
     case "a2a.exchange.error":
       Sfx.deny();
       await s.pop("keycloak", "EXPIRED", "#ff5a5a");
-      await s.walk("agent1");
+      await s.walk("orchestrator");
       break;
     default:
       if (ev.from && ev.to && ev.from !== ev.to && scene.actors[ev.from]) await s.walk(ev.from, ev.to);

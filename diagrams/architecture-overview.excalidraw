@@ -128,7 +128,7 @@
     },
     {
       "type": "rectangle",
-      "id": "agent1_box",
+      "id": "orchestrator_box",
       "x": 420,
       "y": 205,
       "width": 220,
@@ -148,7 +148,7 @@
       "groupIds": [],
       "boundElements": [
         {
-          "id": "agent1_text",
+          "id": "orchestrator_text",
           "type": "text"
         }
       ],
@@ -160,13 +160,13 @@
     },
     {
       "type": "text",
-      "id": "agent1_text",
+      "id": "orchestrator_text",
       "x": 430,
       "y": 245,
       "width": 200,
       "height": 50.0,
-      "text": "Orchestrator agent\n(agent1)\nplain REST /ask, /login",
-      "originalText": "Orchestrator agent\n(agent1)\nplain REST /ask, /login",
+      "text": "Orchestrator agent\n(orchestrator)\nplain REST /ask, /login",
+      "originalText": "Orchestrator agent\n(orchestrator)\nplain REST /ask, /login",
       "fontSize": 15,
       "fontFamily": 3,
       "textAlign": "center",
@@ -187,12 +187,12 @@
       "boundElements": null,
       "link": null,
       "locked": false,
-      "containerId": "agent1_box",
+      "containerId": "orchestrator_box",
       "lineHeight": 1.25
     },
     {
       "type": "rectangle",
-      "id": "agent2_box",
+      "id": "repo_agent_box",
       "x": 820,
       "y": 205,
       "width": 220,
@@ -212,7 +212,7 @@
       "groupIds": [],
       "boundElements": [
         {
-          "id": "agent2_text",
+          "id": "repo_agent_text",
           "type": "text"
         }
       ],
@@ -224,13 +224,13 @@
     },
     {
       "type": "text",
-      "id": "agent2_text",
+      "id": "repo_agent_text",
       "x": 830,
       "y": 245,
       "width": 200,
       "height": 50.0,
-      "text": "Repository agent\n(agent2)\nreads GitHub via MCP",
-      "originalText": "Repository agent\n(agent2)\nreads GitHub via MCP",
+      "text": "Repository agent\n(repo-agent)\nreads GitHub via MCP",
+      "originalText": "Repository agent\n(repo-agent)\nreads GitHub via MCP",
       "fontSize": 15,
       "fontFamily": 3,
       "textAlign": "center",
@@ -251,7 +251,7 @@
       "boundElements": null,
       "link": null,
       "locked": false,
-      "containerId": "agent2_box",
+      "containerId": "repo_agent_box",
       "lineHeight": 1.25
     },
     {
@@ -381,7 +381,7 @@
     },
     {
       "type": "arrow",
-      "id": "arr_user_agent1",
+      "id": "arr_user_orchestrator",
       "x": 240,
       "y": 260,
       "width": 180,
@@ -419,7 +419,7 @@
     },
     {
       "type": "text",
-      "id": "lbl_user_agent1",
+      "id": "lbl_user_orchestrator",
       "x": 240,
       "y": 205,
       "width": 180,
@@ -450,7 +450,7 @@
     },
     {
       "type": "arrow",
-      "id": "arr_agent1_agent2",
+      "id": "arr_orchestrator_repo_agent",
       "x": 640,
       "y": 260,
       "width": 180,
@@ -488,7 +488,7 @@
     },
     {
       "type": "text",
-      "id": "lbl_agent1_agent2",
+      "id": "lbl_orchestrator_repo_agent",
       "x": 668.8,
       "y": 205,
       "width": 122.39999999999999,
@@ -519,7 +519,7 @@
     },
     {
       "type": "arrow",
-      "id": "arr_agent2_github",
+      "id": "arr_repo_agent_github",
       "x": 1040,
       "y": 260,
       "width": 180,
@@ -557,7 +557,7 @@
     },
     {
       "type": "text",
-      "id": "lbl_agent2_github",
+      "id": "lbl_repo_agent_github",
       "x": 1040,
       "y": 185,
       "width": 180,
@@ -588,7 +588,7 @@
     },
     {
       "type": "arrow",
-      "id": "arr_idp_agent1",
+      "id": "arr_idp_orchestrator",
       "x": 790,
       "y": 520,
       "width": 260,
@@ -630,7 +630,7 @@
     },
     {
       "type": "text",
-      "id": "lbl_idp_agent1",
+      "id": "lbl_idp_orchestrator",
       "x": 270,
       "y": 390,
       "width": 250,
@@ -661,7 +661,7 @@
     },
     {
       "type": "arrow",
-      "id": "arr_idp_agent2",
+      "id": "arr_idp_repo_agent",
       "x": 930,
       "y": 335,
       "width": 0,
@@ -699,7 +699,7 @@
     },
     {
       "type": "text",
-      "id": "lbl_idp_agent2",
+      "id": "lbl_idp_repo_agent",
       "x": 960.6,
       "y": 390,
       "width": 208.79999999999998,
@@ -761,7 +761,7 @@
     },
     {
       "type": "arrow",
-      "id": "arr_user_agent2_consent",
+      "id": "arr_user_repo_agent_consent",
       "x": 150,
       "y": 220,
       "width": 780,
@@ -807,7 +807,7 @@
     },
     {
       "type": "text",
-      "id": "lbl_user_agent2_consent",
+      "id": "lbl_user_repo_agent_consent",
       "x": 330,
       "y": 98,
       "width": 420,

@@ -15,7 +15,7 @@ from a2a.types import (
 )
 
 ISSUER = os.environ["KEYCLOAK_ISSUER"]
-BASE_URL = os.environ["AGENT2_BASE_URL"]
+BASE_URL = os.environ["REPO_AGENT_BASE_URL"]
 REQUIRED_SCOPE = os.environ.get("REQUIRED_SCOPE", "github.act")
 
 AUTH_URL = f"{ISSUER}/protocol/openid-connect/auth"
@@ -25,7 +25,7 @@ TOKEN_URL = f"{ISSUER}/protocol/openid-connect/token"
 def build_card() -> AgentCard:
     scheme = SecurityScheme(
         root=OAuth2SecurityScheme(
-            description="Keycloak token with the github.act scope and aud=agent2-github-agent.",
+            description="Keycloak token with the github.act scope and aud=repo-agent.",
             flows=OAuthFlows(
                 authorization_code=AuthorizationCodeOAuthFlow(
                     authorization_url=AUTH_URL,

@@ -5,7 +5,7 @@ import os
 import sqlite3
 import time
 
-DB_PATH = os.environ.get("AGENT2_DB", "/data/tokens.db")
+DB_PATH = os.environ.get("REPO_AGENT_DB", "/data/tokens.db")
 
 _conn = sqlite3.connect(DB_PATH, check_same_thread=False)
 _conn.execute(

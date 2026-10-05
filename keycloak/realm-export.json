@@ -87,7 +87,7 @@
       },
       {
         "name": "github-caller",
-        "description": "May use agent2's GitHub function. Checked by agent1 before it requests the github.act scope in the token exchange.",
+        "description": "May use the repository agent's GitHub function. Checked by the orchestrator agent before it requests the github.act scope in the token exchange.",
         "composite": false,
         "clientRole": false
       }
@@ -307,7 +307,7 @@
       ],
       "security-admin-console": [],
       "admin-cli": [],
-      "agent2-github-agent": [],
+      "repo-agent": [],
       "rogue-agent": [],
       "account-console": [],
       "broker": [
@@ -321,7 +321,7 @@
           "attributes": {}
         }
       ],
-      "agent1-orchestrator": [],
+      "orchestrator": [],
       "account": [
         {
           "id": "bb3197d3-9b07-49c9-9d5f-387a28fc7751",
@@ -674,12 +674,12 @@
     },
     {
       "id": "40538983-2c9e-4236-92d1-4b164a5a4290",
-      "clientId": "agent1-orchestrator",
+      "clientId": "orchestrator",
       "surrogateAuthRequired": false,
       "enabled": true,
       "alwaysDisplayInConsole": false,
       "clientAuthenticatorType": "client-secret",
-      "secret": "agent1-dev-secret",
+      "secret": "orchestrator-dev-secret",
       "redirectUris": [
         "http://localhost:9001/callback"
       ],
@@ -714,9 +714,9 @@
         "email"
       ],
       "optionalClientScopes": [
-        "actor.agent1",
+        "actor.orchestrator",
         "address",
-        "agent2-audience",
+        "repo-agent-audience",
         "github.act",
         "microprofile-jwt",
         "offline_access",
@@ -726,12 +726,12 @@
     },
     {
       "id": "7434b62a-5708-4823-9ebb-0fd0eed4d643",
-      "clientId": "agent2-github-agent",
+      "clientId": "repo-agent",
       "surrogateAuthRequired": false,
       "enabled": true,
       "alwaysDisplayInConsole": false,
       "clientAuthenticatorType": "client-secret",
-      "secret": "agent2-dev-secret",
+      "secret": "repo-agent-dev-secret",
       "redirectUris": [],
       "webOrigins": [],
       "notBefore": 0,
@@ -888,7 +888,7 @@
       ],
       "optionalClientScopes": [
         "address",
-        "agent2-audience",
+        "repo-agent-audience",
         "github.act",
         "microprofile-jwt",
         "offline_access",
@@ -1001,7 +1001,7 @@
             "access.token.claim": "true",
             "claim.name": "act",
             "jsonType.label": "JSON",
-            "claim.value": "{\"sub\":\"agent1-orchestrator\"}"
+            "claim.value": "{\"sub\":\"orchestrator\"}"
           }
         }
       ]
@@ -1453,7 +1453,7 @@
     {
       "id": "6b7995a0-f333-4e9f-9fa2-bac42398e8c8",
       "name": "github.act",
-      "description": "Marks a token as carrying the caller's permission to use agent2's GitHub function. Only granted to users with the github-caller realm role.",
+      "description": "Marks a token as carrying the caller's permission to use the repository agent's GitHub function. Only granted to users with the github-caller realm role.",
       "protocol": "openid-connect",
       "attributes": {
         "include.in.token.scope": "true",
@@ -1553,8 +1553,8 @@
     },
     {
       "id": "39633fb8-b4dc-4a63-9293-be5a0857c6e8",
-      "name": "actor.agent1",
-      "description": "Adds a hardcoded act claim naming agent1. Only agent1 gets this scope.",
+      "name": "actor.orchestrator",
+      "description": "Adds a hardcoded act claim naming the orchestrator agent. Only the orchestrator client gets this scope.",
       "protocol": "openid-connect",
       "attributes": {
         "include.in.token.scope": "false",
@@ -1573,7 +1573,7 @@
             "access.token.claim": "true",
             "claim.name": "act",
             "jsonType.label": "JSON",
-            "claim.value": "{\"sub\":\"agent1-orchestrator\"}"
+            "claim.value": "{\"sub\":\"orchestrator\"}"
           }
         }
       ]
@@ -1699,8 +1699,8 @@
       ]
     },
     {
-      "name": "agent2-audience",
-      "description": "Adds the agent2 audience. Requested on every exchange to agent2, regardless of whether the user has github.act - audience (who the token is for) and scope (what it is allowed to do there) are kept separate on purpose.",
+      "name": "repo-agent-audience",
+      "description": "Adds the repo-agent audience. Requested on every exchange to the repository agent, regardless of whether the user has github.act - audience (who the token is for) and scope (what it is allowed to do there) are kept separate on purpose.",
       "protocol": "openid-connect",
       "attributes": {
         "include.in.token.scope": "false",
@@ -1709,12 +1709,12 @@
       "protocolMappers": [
         {
           "id": "56d49418-37dd-4755-8232-beb3b26e57fc",
-          "name": "agent2-audience",
+          "name": "repo-agent-audience",
           "protocol": "openid-connect",
           "protocolMapper": "oidc-audience-mapper",
           "consentRequired": false,
           "config": {
-            "included.client.audience": "agent2-github-agent",
+            "included.client.audience": "repo-agent",
             "id.token.claim": "false",
             "access.token.claim": "true",
             "introspection.token.claim": "true"

@@ -4,15 +4,15 @@ One event is one step of the auth story: a redirect, a token minted, a check
 passed or failed. The arcade page draws each one as it arrives.
 
 Two halves:
-  - Bus: lives in the orchestrator agent (agent1). Keeps a short history per
+  - Bus: lives in the orchestrator agent. Keeps a short history per
     browser session and pushes new events to any open SSE stream for that
     session.
-  - forward(): used by the repository agent (agent2). It only knows the user's
+  - forward(): used by the repository agent. It only knows the user's
     `sub`, never the browser session, so it posts its events to the
     orchestrator agent, which routes them to every session logged in as that
     `sub`.
 
-Event `src`/`dst` keys stay the technical IDs (agent1, agent2), matching the
+Event `src`/`dst` keys are the technical IDs (orchestrator, repo_agent), matching the
 PLACES keys in the arcade's game.js.
 
 Events never carry a raw token, only decoded claims (see token_view).

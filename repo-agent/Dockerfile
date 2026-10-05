@@ -3,14 +3,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 WORKDIR /app
 
-COPY agent2/requirements.txt .
+COPY repo-agent/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY common/ /app/common/
 RUN pip install --no-cache-dir /app/common
 
-COPY agent2/ /app/agent2/
-WORKDIR /app/agent2
+COPY repo-agent/ /app/repo-agent/
+WORKDIR /app/repo-agent
 
 RUN useradd --create-home appuser \
     && chown -R appuser:appuser /app \

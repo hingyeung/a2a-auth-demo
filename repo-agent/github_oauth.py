@@ -1,4 +1,4 @@
-"""The one time the repository agent (agent2) faces the user: GitHub consent.
+"""The one time the repository agent faces the user: GitHub consent.
 
 The signed ticket carries the verified user identity (sub) from the token leg
 into the browser leg. We never trust a cookie the repository agent set on its own.
@@ -32,12 +32,12 @@ def _who_plays_github() -> str:
                 "MCP server. With MCP_MODE=github they are two different hosts.)")
     return ""
 
-TICKET_KEY = os.environ["AGENT2_TICKET_KEY"]
-BASE_URL = os.environ["AGENT2_BASE_URL"]
+TICKET_KEY = os.environ["REPO_AGENT_TICKET_KEY"]
+BASE_URL = os.environ["REPO_AGENT_BASE_URL"]
 REDIRECT_URI = f"{BASE_URL}/github/callback"
 TICKET_TTL = 300  # 5 minutes
 
-GH_CLIENT_ID = os.environ.get("GITHUB_APP_CLIENT_ID") or "agent2-mock-client"
+GH_CLIENT_ID = os.environ.get("GITHUB_APP_CLIENT_ID") or "repo-agent-mock-client"
 GH_CLIENT_SECRET = os.environ.get("GITHUB_APP_CLIENT_SECRET") or None
 
 _ticket_signer = URLSafeTimedSerializer(TICKET_KEY, salt="github-consent")
@@ -79,18 +79,18 @@ async def github_login(request: Request):
         return HTMLResponse(f"<h3>Refused</h3><p>{e}</p>", status_code=400)
 
     sub = data["sub"]
-    await _ev(sub, "consent.ticket", kind="check", src="agent2",
+    await _ev(sub, "consent.ticket", kind="check", src="repo_agent",
               note="The user opens the consent link. The repository agent checks the ticket's signature "
                    "and age. It trusts the sub inside, not any cookie.",
               check={"name": "signed ticket", "claim": "ticket", "expected": "valid, < 5 min",
                      "actual": "valid", "ok": True})
 
     disc = await mcp_client.discover()
-    await _ev(sub, "mcp.probe", kind="result", src="mcp", dst="agent2",
+    await _ev(sub, "mcp.probe", kind="result", src="mcp", dst="repo_agent",
               note="The repository agent knocks on the MCP server with no token. It answers 401 and a "
                    "WWW-Authenticate header that points to its metadata.",
               http={"status": disc["probe_status"], "body": disc.get("www_authenticate") or ""})
-    await _ev(sub, "mcp.discover", kind="info", src="agent2", dst="github",
+    await _ev(sub, "mcp.discover", kind="info", src="repo_agent", dst="github",
               note="The repository agent reads the MCP server's metadata. It names the server that "
                    "gives out tokens for it: GitHub's login server, not Keycloak. The repository agent "
                    "then reads GitHub's metadata to find its authorize and token "
@@ -140,14 +140,14 @@ async def github_callback(request: Request):
     if not pend or pend["sub"] != data["sub"]:
         return HTMLResponse("<h3>Refused</h3><p>no pending request for this ticket</p>", status_code=400)
     _used_nonces.add(nonce)
-    await _ev(pend["sub"], "consent.callback", kind="request", src="user", dst="agent2",
+    await _ev(pend["sub"], "consent.callback", kind="request", src="user", dst="repo_agent",
               note="The user said yes. GitHub sends the browser back to the repository agent with a "
                    "one-time code. The repository agent checks the ticket in state again and makes "
                    "sure it was not used before.",
               check={"name": "state ticket + one-time nonce", "claim": "state",
                      "expected": "valid ticket, unused nonce, same sub",
                      "actual": "ok", "ok": True})
-    await _ev(pend["sub"], "consent.swap", kind="request", src="agent2", dst="github",
+    await _ev(pend["sub"], "consent.swap", kind="request", src="repo_agent", dst="github",
               note="The repository agent calls GitHub's token endpoint directly, server to server. It "
                    "sends the code plus the PKCE verifier. Only the app that started the "
                    "login knows that verifier, so a stolen code is useless.",
@@ -158,7 +158,7 @@ async def github_callback(request: Request):
         pend["token_endpoint"], code, pend["verifier"],
         REDIRECT_URI, GH_CLIENT_ID, GH_CLIENT_SECRET,
     )
-    await _ev(pend["sub"], "consent.token", kind="token", src="github", dst="agent2",
+    await _ev(pend["sub"], "consent.token", kind="token", src="github", dst="repo_agent",
               note="GitHub gives the repository agent the user's own GitHub token. GitHub made it, not "
                    "Keycloak. It is opaque, not a JWT.",
               token=events.token_view(tok["access_token"], "GitHub token"),
@@ -170,7 +170,7 @@ async def github_callback(request: Request):
         tok.get("expires_in"),
         tok.get("scope"),
     )
-    await _ev(pend["sub"], "consent.stored", kind="info", src="agent2",
+    await _ev(pend["sub"], "consent.stored", kind="info", src="repo_agent",
               note="The repository agent stores the GitHub token under the user's sub. Close the tab "
                    "and ask again.")
     return HTMLResponse(

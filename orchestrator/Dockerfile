@@ -3,14 +3,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 WORKDIR /app
 
-COPY agent1/requirements.txt .
+COPY orchestrator/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY common/ /app/common/
 RUN pip install --no-cache-dir /app/common
 
-COPY agent1/ /app/agent1/
-WORKDIR /app/agent1
+COPY orchestrator/ /app/orchestrator/
+WORKDIR /app/orchestrator
 
 RUN useradd --create-home appuser && chown -R appuser:appuser /app
 USER appuser
