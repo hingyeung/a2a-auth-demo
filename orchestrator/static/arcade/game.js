@@ -7,9 +7,14 @@
 
 const $ = (id) => document.getElementById(id);
 
-// ---------------- map layout (320 x 180 world, 16px tiles, zoom 3) ----------------
+// ---------------- map layout (320 x 180 world, 16px tiles) ----------------
+//
+// The world stays 320 x 180, but the canvas is drawn at a whole-number zoom Z
+// (see fitZoom), so each art pixel is exactly Z screen pixels and text is
+// drawn at full size instead of being stretched.
 
 const W = 320, H = 180, ROAD_Y = 118;
+const INK = "#f4efe3";
 
 // Where each actor stands, and the label under its building. Keys are the
 // technical IDs used in event src/dst (orchestrator = orchestrator agent, repo_agent =
@@ -17,11 +22,12 @@ const W = 320, H = 180, ROAD_Y = 118;
 const PLACES = {
   user:     { x: 24,  y: ROAD_Y, label: "HOME" },
   keycloak: { x: 88,  y: 70,     label: "KEYCLOAK" },
-  orchestrator: { x: 136, y: ROAD_Y, label: "ORCHESTRATOR" },
-  // labelDy: GATE sits between two long labels, so its label drops a row.
-  gate:     { x: 184, y: ROAD_Y, label: "GATE", labelDy: 10 },
-  repo_agent: { x: 232, y: ROAD_Y, label: "REPO AGENT" },
-  mcp:      { x: 296, y: ROAD_Y, label: "MCP" },
+  // labelX: nudge long labels apart so they do not touch.
+  orchestrator: { x: 136, y: ROAD_Y, label: "ORCHESTRATOR", labelX: 128 },
+  // The repository agent's auth checkpoint. Its lamp board names it, so no road label.
+  gate:     { x: 184, y: ROAD_Y },
+  repo_agent: { x: 232, y: ROAD_Y, label: "REPO AGENT", labelX: 236 },
+  mcp:      { x: 296, y: ROAD_Y, label: "MCP", labelX: 300 },
   // GitHub's login server (the OAuth authorization server for GitHub tokens).
   // Its own building, apart from the MCP vault: it gives out GitHub tokens,
   // the vault only accepts them.
@@ -42,7 +48,30 @@ const BUILDINGS = [
   ["dungeon", 15, 1, [[9, 10, 11], [21, 22, 23], [33, 34, 35]]],       // GitHub login server
 ];
 const CHAR = { alice: 99, bob: 88, keycloak: 84, orchestrator: 96, repo_agent: 112, mcp: 87, github: 100 };
-const ITEM = { userKey: 117, oboKey: 117, ghCoin: 93, scroll: 83, chest: 89, chestOpen: 91 };
+const ITEM = { scroll: 83, chest: 89, chestOpen: 91 };
+
+// Every token is a coin, one colour per token (same colours as the legs).
+const COIN = { user: 0x6fc3ff, obo: 0xffcf4a, gh: 0xd38bff };
+const COIN_ART = [  // o outline, h highlight, f face, d shade
+  "..oooo..",
+  ".ohhffo.",
+  "ohhfffdo",
+  "ohffffdo",
+  "offfffdo",
+  "offffddo",
+  ".offddo.",
+  "..oooo..",
+];
+
+// The checkpoint: lamp board above a guard booth, barrier arm across the road.
+const CP = {
+  board: { x: 162, y: 34, w: 44, h: 36 },  // high, so checkpoint bubbles do not hide it
+  booth: { x: 177, y: 94, w: 14, h: 18 },
+  pivot: { x: 196, y: 113 },   // the arm hinges here and points left
+  armLen: 26,
+  stopX: 158,                  // where a caller waits in front of the arm
+};
+const LAMP_NAMES = ["TOKEN", "SIGN", "CALLER", "SCOPE"];
 
 // ---------------- state ----------------
 
@@ -67,6 +96,7 @@ class Town extends Phaser.Scene {
 
   create() {
     scene = this;
+    this.texts = [];
     // Ground: grass everywhere, one road along row 7, a side road up to Keycloak.
     for (let r = 0; r < 12; r++) {
       for (let c = 0; c < 20; c++) {
@@ -78,30 +108,25 @@ class Town extends Phaser.Scene {
     for (const k of UP_PLACES) {
       for (let r = 4; r < 7; r++) this.add.image(PLACES[k].x, r * 16 + 8, "town", TOWN.road);
     }
-    [[1, 1], [2, 2], [10, 1], [11, 2], [13, 1], [19, 0], [1, 10], [9, 10], [16, 10], [12, 9]].forEach(([c, r], i) =>
+    [[1, 1], [2, 2], [10, 1], [13, 1], [19, 0], [1, 10], [9, 10], [16, 10], [12, 9]].forEach(([c, r], i) =>
       this.add.image(c * 16 + 8, r * 16 + 8, "town", i % 3 ? TOWN.tree : TOWN.bush));
 
     for (const [sheet, col, row, grid] of BUILDINGS) {
       grid.forEach((line, dr) => line.forEach((f, dc) =>
         this.add.image((col + dc) * 16 + 8, (row + dr) * 16 + 8, sheet, f)));
     }
-    // The gate between the orchestrator agent and the repository agent: a portcullis with four check lamps.
-    this.gate = this.add.image(PLACES.gate.x, 6 * 16 + 8, "dungeon", 68);
-    this.lamps = [0, 1, 2, 3].map((i) => {
-      const x = PLACES.gate.x - 15 + i * 10;
-      const lamp = this.add.rectangle(x, 4 * 16 + 10, 7, 7, 0x555566).setStrokeStyle(1, 0x000000);
-      this.add.text(x, 4 * 16 - 6, String(i + 1), this.font(8)).setOrigin(0.5, 0);
-      return lamp;
-    });
+    this.drawCheckpoint();
 
     for (const [key, p] of Object.entries(PLACES)) {
-      const ly = (UP_PLACES.includes(key) ? 2 : 8 * 16 + 2) + (p.labelDy || 0);
-      const t = this.add.text(p.x, ly, p.label, this.font(8)).setOrigin(0.5, 0);
-      t.setBackgroundColor("#000000aa").setPadding(1, 1, 1, 0);
+      if (!p.label) continue;
+      const ly = UP_PLACES.includes(key) ? 2 : 8 * 16 + 2;
+      this.label(p.labelX ?? p.x, ly, p.label).setOrigin(0.5, 0);
     }
 
     this.chest = this.add.image(PLACES.mcp.x + 14, ROAD_Y - 4, "dungeon", ITEM.chest);
     this.store = this.add.image(PLACES.repo_agent.x + 14, ROAD_Y - 4, "dungeon", ITEM.chest).setVisible(false);
+
+    for (const [kind, color] of Object.entries(COIN)) this.makeCoin(`coin-${kind}`, color);
 
     this.actors = {
       user: this.add.sprite(PLACES.user.x, ROAD_Y, "dungeon", CHAR[player]),
@@ -112,17 +137,100 @@ class Town extends Phaser.Scene {
       github: this.add.sprite(PLACES.github.x, PLACES.github.y, "dungeon", CHAR.github),
     };
     this.actors.mcp.setFlipX(true);
+    // The token coin each actor holds, drawn over its head (see update()).
+    this.held = {};
+    for (const k of Object.keys(this.actors)) {
+      this.held[k] = this.add.image(0, 0, "coin-user").setVisible(false).setDepth(4);
+    }
 
-    this.banner = this.add.text(W / 2, H - 12, "", this.font(8, "#ffcf4a")).setOrigin(0.5, 0)
-      .setBackgroundColor("#000000").setPadding(2, 1, 2, 0).setDepth(9);
-    this.big = this.add.text(W / 2, H / 2 - 20, "", this.font(16, "#ffcf4a"))
+    this.banner = this.label(W / 2, H - 11, "", 8, "#ffcf4a").setOrigin(0.5, 0)
+      .setBackgroundColor("#000000").setPadding(2, 1, 2, 0).setDepth(9).setVisible(false);
+    // Below the road, so it never hides the checkpoint lamps.
+    this.big = this.label(W / 2, 152, "", 16, "#ffcf4a")
       .setOrigin(0.5).setStroke("#000", 4).setVisible(false).setDepth(10);
+    this.cameras.main.setZoom(zoom).centerOn(W / 2, H / 2);
     pump();  // events may have arrived while the scene was loading
   }
 
-  font(size, color = "#f4efe3") {
-    // Press Start 2P is an 8px pixel font: keep sizes at 8 or 16 so it stays sharp.
-    return { fontFamily: '"Press Start 2P"', fontSize: `${size}px`, color };
+  update() {
+    for (const [k, c] of Object.entries(this.held)) {
+      if (c.visible) c.setPosition(this.actors[k].x, this.actors[k].y - 13);
+    }
+  }
+
+  // All canvas text goes through here. Press Start 2P is an 8px pixel font:
+  // keep sizes at 8 or 16 (4 for the lamp names). Each text is drawn at the
+  // canvas zoom, so it is sharp and not a stretched 8px image. A black outline
+  // keeps it readable on grass and roads.
+  label(x, y, str, size = 8, color = INK) {
+    const t = this.add.text(x, y, str, {
+      fontFamily: '"Press Start 2P"', fontSize: `${size}px`, color,
+      stroke: "#000000", strokeThickness: size >= 8 ? 3 : 0, resolution: zoom,
+    });
+    this.texts.push(t);
+    t.once("destroy", () => { this.texts = this.texts.filter((o) => o !== t); });
+    return t;
+  }
+
+  // Re-draw every text at a new canvas zoom (window resized or browser zoom changed).
+  setZoom(z) {
+    this.cameras.main.setZoom(z).centerOn(W / 2, H / 2);
+    for (const t of this.texts) t.setResolution(z);
+  }
+
+  makeCoin(key, color) {
+    const C = Phaser.Display.Color;
+    const shade = { o: 0x14121f, f: color,
+      h: C.IntegerToColor(color).lighten(25).color, d: C.IntegerToColor(color).darken(25).color };
+    const g = this.make.graphics({ add: false });
+    COIN_ART.forEach((row, y) => [...row].forEach((ch, x) => {
+      if (shade[ch] !== undefined) g.fillStyle(shade[ch]).fillRect(x, y, 1, 1);
+    }));
+    g.generateTexture(key, 8, 8);
+    g.destroy();
+  }
+
+  setHeld(who, kind) {
+    const c = this.held[who];
+    if (!kind) { c.setVisible(false); return; }
+    c.setTexture(`coin-${kind}`).setVisible(true);
+    this.update();
+  }
+
+  // The repository agent's auth checkpoint: a lamp board with the 4 checks,
+  // a guard booth, and a red/white barrier arm across the road.
+  drawCheckpoint() {
+    const g = this.add.graphics().setDepth(1);
+    const { board: b, booth: k, pivot: p } = CP;
+    // Board on two posts.
+    g.fillStyle(0x3b2a1a).fillRect(b.x + 6, b.y + b.h, 2, k.y - b.y - b.h).fillRect(b.x + b.w - 8, b.y + b.h, 2, k.y - b.y - b.h);
+    g.fillStyle(0x14121f).fillRect(b.x, b.y, b.w, b.h);
+    g.fillStyle(0x6b4a2b).fillRect(b.x + 1, b.y + 1, b.w - 2, b.h - 2);
+    g.fillStyle(0x221e35).fillRect(b.x + 2, b.y + 8, b.w - 4, b.h - 10);
+    this.label(b.x + b.w / 2, b.y + 2, "AUTH CHECK", 4, "#ffcf4a").setOrigin(0.5, 0).setDepth(2);
+    this.lamps = LAMP_NAMES.map((name, i) => {
+      const y = b.y + 10 + i * 6;
+      const lamp = this.add.rectangle(b.x + 6, y + 2, 4, 4, 0x555566).setDepth(2);
+      this.label(b.x + 10, y, name, 4).setDepth(2);
+      return lamp;
+    });
+    // Guard booth: roof, wall, window with the guard behind it.
+    g.fillStyle(0x14121f).fillRect(k.x - 1, k.y - 1, k.w + 2, k.h + 1);
+    g.fillStyle(0xd9d2c0).fillRect(k.x, k.y + 3, k.w, k.h - 3);
+    g.fillStyle(0xc0392b).fillRect(k.x - 1, k.y, k.w + 2, 3);
+    g.fillStyle(0x14121f).fillRect(k.x + 3, k.y + 6, k.w - 6, 6);
+    g.fillStyle(0x6fc3ff).fillRect(k.x + 4, k.y + 7, k.w - 8, 4);
+    g.fillStyle(0x14121f).fillRect(k.x + 6, k.y + 8, 2, 2);  // guard's head
+    // Post the arm hinges on.
+    g.fillStyle(0x14121f).fillRect(p.x - 2, p.y - 3, 5, ROAD_Y + 6 - p.y + 3);
+    g.fillStyle(0x9a9aa8).fillRect(p.x - 1, p.y - 2, 3, ROAD_Y + 6 - p.y + 1);
+    // Arm: red/white blocks pointing left from the hinge. Open = straight up.
+    const arm = this.add.graphics();
+    arm.fillStyle(0x14121f).fillRect(-CP.armLen - 1, -2, CP.armLen + 1, 5);
+    for (let x = 0; x < CP.armLen; x += 4) {
+      arm.fillStyle((x / 4) % 2 ? 0xf4efe3 : 0xe03c3c).fillRect(-CP.armLen + x, -1, Math.min(4, CP.armLen - x), 3);
+    }
+    this.arm = this.add.container(p.x, p.y, [arm]).setDepth(3);
   }
 
   tween(cfg) {
@@ -144,6 +252,7 @@ class Town extends Phaser.Scene {
     } else {
       const p = PLACES[to];
       ty = p.y; lane = p.x; tx = p.x + (a.x < p.x ? -12 : 12);
+      if (to === "gate") tx = CP.stopX;  // wait in front of the barrier arm
     }
     if (Math.abs(a.x - tx) < 1 && Math.abs(a.y - ty) < 1) return;
     Sfx.walk();
@@ -165,11 +274,10 @@ class Town extends Phaser.Scene {
     }
   }
 
-  // An item flies from one actor to another along an arc.
-  async fly(frame, sheet, from, to, tint) {
+  // An item (a token coin, or a sheet frame) flies from one actor to another along an arc.
+  async fly(from, to, tex, frame) {
     const a = this.actors[from] || PLACES[from], b = this.actors[to] || PLACES[to];
-    const it = this.add.image(a.x, a.y - 10, sheet, frame).setDepth(5);
-    if (tint) it.setTint(tint);
+    const it = this.add.image(a.x, a.y - 10, tex, frame).setDepth(5);
     const midY = Math.min(a.y, b.y) - 30;
     const curve = new Phaser.Curves.QuadraticBezier(
       new Phaser.Math.Vector2(a.x, a.y - 10),
@@ -184,14 +292,25 @@ class Town extends Phaser.Scene {
     it.destroy();
   }
 
-  // A word bubble over an actor ("401", "OK", "?").
-  async pop(who, text, color = "#f4efe3", ms = 1100) {
+  // A speech bubble over an actor ("401", "OK", "?"), with a tail that points
+  // down at the speaker. It sits above the held-token coin.
+  async pop(who, text, color = INK, ms = 1600) {
     const a = this.actors[who] || PLACES[who];
-    const t = this.add.text(a.x, a.y - 16, text, this.font(8, color))
-      .setOrigin(0.5, 1).setBackgroundColor("#000000").setPadding(2, 2, 2, 1).setDepth(6);
-    await this.tween({ targets: t, y: a.y - 22, duration: 250 });
+    const t = this.label(0, 0, text, 8, color).setStroke("#000", 0);
+    const w = Math.ceil(t.width) + 5, h = 12;
+    const left = -Math.floor(w / 2), top = -3 - h;
+    // Keep the bubble inside the world.
+    const x = Phaser.Math.Clamp(a.x, -left + 1, W - (w + left) - 1);
+    t.setPosition(left + 3, top + 2);
+    const g = this.add.graphics();
+    g.fillStyle(0xf4efe3).fillRect(left - 1, top - 1, w + 2, h + 2);
+    g.fillStyle(0x000000).fillRect(left, top, w, h);
+    const tip = a.x - x;  // tail stays over the speaker even when the box is pushed in
+    g.fillStyle(0xf4efe3).fillRect(tip - 2, -3, 5, 1).fillRect(tip - 1, -2, 3, 1).fillRect(tip, -1, 1, 1);
+    const box = this.add.container(x, a.y - 15, [g, t]).setDepth(6);
+    await this.tween({ targets: box, y: a.y - 19, duration: 250 });
     await new Promise((r) => setTimeout(r, ms));
-    t.destroy();
+    box.destroy();
   }
 
   async shake(who) {
@@ -210,8 +329,9 @@ class Town extends Phaser.Scene {
     this.lamps.forEach((l) => l.setFillStyle(0x555566));
   }
 
+  // The barrier arm swings straight up to open and back down to close.
   async gateOpen(open) {
-    await this.tween({ targets: this.gate, y: open ? 6 * 16 - 6 : 6 * 16 + 8, duration: 350 });
+    await this.tween({ targets: this.arm, angle: open ? 90 : 0, duration: 400, ease: "Quad.InOut" });
   }
 
   async bigText(text, color) {
@@ -222,8 +342,9 @@ class Town extends Phaser.Scene {
   resetStage() {
     this.big.setVisible(false);
     this.resetLamps();
-    this.gate.y = 6 * 16 + 8;
+    this.arm.angle = 0;
     this.chest.setFrame(ITEM.chest);
+    for (const k of Object.keys(this.held)) this.setHeld(k, null);
     for (const [k, a] of Object.entries(this.actors)) {
       a.x = this.homeOf(k).x;
       a.y = PLACES[k].y;
@@ -255,11 +376,13 @@ async function animate(ev) {
       break;
     case "h2a.login.token":
       Sfx.mint();
-      await s.fly(ITEM.userKey, "town", "keycloak", "user");
+      await s.fly("keycloak", "user", "coin-user");
+      s.setHeld("user", "user");
       await s.walk("user");
       break;
     case "ask.start":
       s.resetStage();
+      s.setHeld("user", "user");  // logged in, so the user holds a user token
       await s.walk("user", "orchestrator");
       await s.pop("user", "LIST MY REPOS!");
       break;
@@ -275,7 +398,8 @@ async function animate(ev) {
       break;
     case "a2a.exchange.token":
       Sfx.mint();
-      await s.fly(ITEM.oboKey, "town", "keycloak", "orchestrator", 0xffcf4a);
+      await s.fly("keycloak", "orchestrator", "coin-obo");
+      s.setHeld("orchestrator", "obo");
       await s.walk("orchestrator");
       break;
     case "a2a.call":
@@ -286,11 +410,11 @@ async function animate(ev) {
       s.lamp(i, ev.check.ok);
       if (ev.check.ok) {
         Sfx.pass();
-        await s.pop("gate", `CHECK ${i + 1} OK`, "#5fd36a", 600);
+        await s.pop("gate", `${LAMP_NAMES[i]} OK`, "#5fd36a", 900);
         if (ev.check.name === "scope") { Sfx.door(); await s.gateOpen(true); }
       } else {
         Sfx.deny();
-        await s.pop("gate", String(ev.http?.status || "NO"), "#ff5a5a", 700);
+        await s.pop("gate", String(ev.http?.status || "NO"), "#ff5a5a", 1000);
         await s.shake("orchestrator");
       }
       break;
@@ -303,14 +427,15 @@ async function animate(ev) {
       break;
     case "mcp.token.lookup":
       await s.gateOpen(false);
+      if (ev.check.ok) s.setHeld("repo_agent", "gh");
       await s.pop("repo_agent", ev.check.ok ? "TOKEN FOUND" : "NO TOKEN", ev.check.ok ? "#5fd36a" : "#ffcf4a");
       break;
     case "consent.needed":
-      await s.fly(ITEM.scroll, "town", "repo_agent", "orchestrator");
+      await s.fly("repo_agent", "orchestrator", "town", ITEM.scroll);
       await s.walk("orchestrator");
       break;
     case "a2a.input_required":
-      await s.fly(ITEM.scroll, "town", "orchestrator", "user");
+      await s.fly("orchestrator", "user", "town", ITEM.scroll);
       await s.pop("user", "CONSENT LINK!", "#d38bff");
       break;
     case "consent.ticket":
@@ -322,21 +447,21 @@ async function animate(ev) {
       await s.pop("mcp", String(ev.http?.status || 401), "#ff5a5a");
       break;
     case "mcp.discover":
-      await s.pop("repo_agent", "WHO GIVES TOKENS?", "#ffcf4a", 800);
-      await s.pop("mcp", "ASK GITHUB", "#ffcf4a", 800);
-      await s.pop("github", "THAT'S ME", "#ffcf4a", 800);
+      await s.pop("repo_agent", "WHO GIVES TOKENS?", "#ffcf4a", 1150);
+      await s.pop("mcp", "ASK GITHUB", "#ffcf4a", 1150);
+      await s.pop("github", "THAT'S ME", "#ffcf4a", 1150);
       await s.walk("repo_agent");
       break;
     case "consent.authorize":
       await s.walk("user", "github");
-      await s.pop("github", "LOG IN + AGREE?", "#d38bff", 900);
-      await s.pop("user", "I AGREE", "#d38bff", 700);
+      await s.pop("github", "LOG IN + AGREE?", "#d38bff", 1300);
+      await s.pop("user", "I AGREE", "#d38bff", 1000);
       break;
     case "consent.callback":
-      await s.pop("github", "HERE'S A CODE", "#d38bff", 700);
+      await s.pop("github", "HERE'S A CODE", "#d38bff", 1000);
       await s.walk("user", "repo_agent");
-      await s.fly(ITEM.scroll, "town", "user", "repo_agent");
-      await s.pop("repo_agent", "TICKET OK", "#5fd36a", 600);
+      await s.fly("user", "repo_agent", "town", ITEM.scroll);
+      await s.pop("repo_agent", "TICKET OK", "#5fd36a", 850);
       break;
     case "consent.swap":
       await s.walk("repo_agent", "github");
@@ -344,7 +469,8 @@ async function animate(ev) {
       break;
     case "consent.token":
       Sfx.mint();
-      await s.fly(ITEM.ghCoin, "town", "github", "repo_agent");
+      await s.fly("github", "repo_agent", "coin-gh");
+      s.setHeld("repo_agent", "gh");
       await s.walk("repo_agent");
       break;
     case "consent.stored":
@@ -354,7 +480,7 @@ async function animate(ev) {
       break;
     case "mcp.call":
       await s.walk("repo_agent", "mcp");
-      await s.fly(ITEM.ghCoin, "town", "repo_agent", "mcp");
+      await s.fly("repo_agent", "mcp", "coin-gh");
       break;
     case "mcp.result":
       if (ev.data?.ok) {
@@ -368,7 +494,7 @@ async function animate(ev) {
       await s.walk("repo_agent");
       break;
     case "a2a.done":
-      await s.fly(ITEM.chestOpen, "dungeon", "repo_agent", "orchestrator");
+      await s.fly("repo_agent", "orchestrator", "dungeon", ITEM.chestOpen);
       await s.walk("user", "orchestrator");
       Sfx.win();
       await s.bigText("STAGE CLEAR!", "#5fd36a");
@@ -387,16 +513,16 @@ async function animate(ev) {
 
 const TITLES = {
   "h2a.login.start": "LOGIN: OFF TO KEYCLOAK",
-  "h2a.login.token": "KEY FORGED: USER TOKEN",
+  "h2a.login.token": "COIN MINTED: USER TOKEN",
   "ask.start": "A QUEST FOR THE ORCHESTRATOR",
   "h2a.role.check": "ORCHESTRATOR CHECKS THE ROLE",
   "a2a.exchange.request": "TOKEN EXCHANGE (RFC 8693)",
-  "a2a.exchange.token": "NEW KEY: OBO TOKEN",
-  "a2a.call": "TO THE GATE OF THE REPO AGENT",
-  "a2a.check.bearer": "GATE CHECK 1: BEARER",
-  "a2a.check.jwt": "GATE CHECK 2: SIGNATURE, AUD, EXP",
-  "a2a.check.caller": "GATE CHECK 3: CALLER ALLOWLIST",
-  "a2a.check.scope": "GATE CHECK 4: SCOPE",
+  "a2a.exchange.token": "NEW COIN: OBO TOKEN",
+  "a2a.call": "TO THE REPO AGENT'S CHECKPOINT",
+  "a2a.check.bearer": "CHECKPOINT 1: TOKEN (BEARER)",
+  "a2a.check.jwt": "CHECKPOINT 2: SIGN (SIGNATURE, AUD, EXP)",
+  "a2a.check.caller": "CHECKPOINT 3: CALLER (ALLOWLIST)",
+  "a2a.check.scope": "CHECKPOINT 4: SCOPE",
   "a2a.refused": "GAME OVER: 403",
   "a2a.failed": "GAME OVER: TOOL ERROR",
   "mcp.token.lookup": "REPO AGENT CHECKS ITS TOKEN STORE",
@@ -423,8 +549,8 @@ const ENDINGS = {
     "made by GitHub (not Keycloak) after the user agreed. " +
     "Each hop got a new token for exactly one audience.",
   "a2a.refused": () =>
-    "\n\nWHAT YOU SAW: gates 1 to 3 passed. Bob is real, and the orchestrator agent really called. " +
-    "Only gate 4 failed: Bob is not allowed. Identity (who) and authorisation (may they) are separate checks.",
+    "\n\nWHAT YOU SAW: checks 1 to 3 passed. Bob is real, and the orchestrator agent really called. " +
+    "Only check 4 (SCOPE) failed: Bob is not allowed. Identity (who) and authorisation (may they) are separate checks.",
 };
 
 function esc(v) {
@@ -466,7 +592,7 @@ function renderCard(tok, hl = {}) {
   $("cardTitle").textContent = `TOKEN CARD: ${tok.label.toUpperCase()}`;
   if (tok.opaque) {
     $("card").innerHTML = `<table class="claims"><tr class="${hl.opaque || ""}"><td>value</td><td>${esc(tok.head)}</td></tr></table>` +
-      `<p style="color:var(--dim);font-size:8px">Opaque token: not a JWT, so there are no claims to read. Only the MCP server can check it.</p>`;
+      `<p style="color:var(--dim)">Opaque token: not a JWT, so there are no claims to read. Only the MCP server can check it.</p>`;
     return;
   }
   const rows = Object.entries(tok.claims || {}).map(([k, v]) =>
@@ -652,14 +778,44 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
+// ---------------- whole-number zoom ----------------
+
+// The biggest whole-number zoom that fits #stage in device pixels. Whole
+// numbers keep every art pixel the same size; text is drawn at this zoom too.
+function fitZoom() {
+  const dpr = window.devicePixelRatio || 1;
+  return Phaser.Math.Clamp(Math.floor(($("stage").clientWidth * dpr) / W), 2, 8);
+}
+let zoom = 3;
+let game = null;
+
+function applyZoom() {
+  const dpr = window.devicePixelRatio || 1;
+  zoom = fitZoom();
+  // The canvas has W*Z by H*Z real pixels, shown at that size in device pixels.
+  game.scale.setZoom(1 / dpr);
+  game.scale.resize(W * zoom, H * zoom);
+  game.canvas.style.width = `${(W * zoom) / dpr}px`;
+  game.canvas.style.height = `${(H * zoom) / dpr}px`;
+  scene?.setZoom(zoom);
+}
+
+let resizeTimer = null;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  // Always re-apply: the device pixel ratio can change (browser zoom) while Z stays the same.
+  resizeTimer = setTimeout(() => { if (game) applyZoom(); }, 150);
+});
+
 // Wait for the pixel font so canvas text renders in it, then start.
 document.fonts.load('8px "Press Start 2P"').finally(async () => {
   await refreshWho();
-  new Phaser.Game({
-    type: Phaser.AUTO, parent: "stage", width: W, height: H, pixelArt: true,
-    backgroundColor: "#000000", scene: Town,
-    scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-    callbacks: { postBoot: () => { connect(); pump(); } },
+  zoom = fitZoom();
+  game = new Phaser.Game({
+    type: Phaser.AUTO, parent: "stage", width: W * zoom, height: H * zoom,
+    pixelArt: true, roundPixels: true, backgroundColor: "#000000", scene: Town,
+    scale: { mode: Phaser.Scale.NONE, zoom: 1 / (window.devicePixelRatio || 1) },
+    callbacks: { postBoot: () => { applyZoom(); connect(); pump(); } },
   });
   setInterval(refreshWho, 5000);
 });

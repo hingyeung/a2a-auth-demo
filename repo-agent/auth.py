@@ -35,7 +35,7 @@ OPEN_PREFIXES = ("/.well-known", "/health", "/github", "/debug")
 
 async def _check(sub, name: str, ok: bool, note: str, *, claim: str = "",
                  expected=None, actual=None, status: int | None = None, body: str = "") -> None:
-    """Tell the arcade page about one gate check. Display only."""
+    """Tell the arcade page about one checkpoint check. Display only."""
     await events.forward(sub, events.make(
         f"a2a.check.{name}", leg="A2A", kind="check", src="repo_agent", dst="repo_agent", note=note,
         check={"name": name, "claim": claim, "expected": expected, "actual": actual, "ok": ok},
@@ -78,16 +78,16 @@ class OBOAuthMiddleware(BaseHTTPMiddleware):
         # Arcade events go to the user named by the verified sub only.
         # A repeat send (see the orchestrator agent's raw_a2a_call) gets the same checks, silently.
         sub = None if request.headers.get("x-arcade-repeat") else claims.sub
-        await _check(sub, "bearer", True, "Gate 1: is there a Bearer token? Yes.",
+        await _check(sub, "bearer", True, "Check 1 (TOKEN): is there a Bearer token? Yes.",
                      claim="Authorization", expected="Bearer <token>", actual="Bearer ...")
         await _check(sub, "jwt", True,
-                     "Gate 2: signed by Keycloak (checked with its JWKS), right issuer, "
+                     "Check 2 (SIGN): signed by Keycloak (checked with its JWKS), right issuer, "
                      f"aud includes {AUDIENCE}, not expired. Pass.",
                      claim="aud", expected=AUDIENCE, actual=claims.aud)
 
         caller = claims.azp or claims.actor_sub
         if caller not in ALLOWED_CALLERS:
-            await _check(sub, "caller", False, f"Gate 3 failed: caller {caller!r} is not on the allowlist.",
+            await _check(sub, "caller", False, f"Check 3 (CALLER) failed: caller {caller!r} is not on the allowlist.",
                          claim="azp / act.sub", expected=sorted(ALLOWED_CALLERS), actual=caller,
                          status=403, body=f"caller {caller!r} is not in ALLOWED_CALLERS")
             return JSONResponse(
@@ -96,12 +96,12 @@ class OBOAuthMiddleware(BaseHTTPMiddleware):
             )
 
         await _check(sub, "caller", True,
-                     f"Gate 3: the caller is {caller}. It is on the repository agent's allowlist. Pass.",
+                     f"Check 3 (CALLER): the caller is {caller}. It is on the repository agent's allowlist. Pass.",
                      claim="azp / act.sub", expected=sorted(ALLOWED_CALLERS), actual=caller)
 
         if REQUIRED_SCOPE not in claims.scopes:
             await _check(sub, "scope", False,
-                         f"Gate 4 failed: the token has no {REQUIRED_SCOPE} scope. The user is "
+                         f"Check 4 (SCOPE) failed: the token has no {REQUIRED_SCOPE} scope. The user is "
                          "real, but not allowed to use GitHub through the repository agent.",
                          claim="scope", expected=REQUIRED_SCOPE, actual=claims.scope,
                          status=403, body=f"missing scope {REQUIRED_SCOPE}")
@@ -110,7 +110,7 @@ class OBOAuthMiddleware(BaseHTTPMiddleware):
                 status_code=403,
             )
 
-        await _check(sub, "scope", True, f"Gate 4: scope includes {REQUIRED_SCOPE}. Pass. "
+        await _check(sub, "scope", True, f"Check 4 (SCOPE): scope includes {REQUIRED_SCOPE}. Pass. "
                      "The repository agent now reads the user from sub.",
                      claim="scope", expected=REQUIRED_SCOPE, actual=claims.scope)
 

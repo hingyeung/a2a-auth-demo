@@ -98,7 +98,7 @@ async def raw_a2a_call(token: str | None, *, repeat: bool = False) -> dict:
     """Used by the break-it buttons. Bypass the SDK. Report the raw HTTP result.
 
     repeat=True marks a second send of a call the repository agent already
-    refused (only to read its real status), so it does not show the gate checks twice on
+    refused (only to read its real status), so it does not show the checkpoint checks twice on
     the Auth Arcade page."""
     body = {
         "jsonrpc": "2.0",
