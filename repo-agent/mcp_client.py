@@ -104,7 +104,10 @@ async def call_tool(github_token: str, tool: str, arguments: dict | None = None)
     async with httpx.AsyncClient(timeout=20, follow_redirects=True) as hc:
         r = await hc.post(BASE_URL, json=body, headers=headers)
     if r.status_code == 401:
-        return {"error": "MCP rejected the token (401)", "www_authenticate": r.headers.get("www-authenticate")}
+        # Keep GitHub's own reason: WWW-Authenticate (error, error_description)
+        # and the start of the body.
+        return {"error": "MCP rejected the token (401)", "www_authenticate": r.headers.get("www-authenticate"),
+                "body": r.text[:300]}
     try:
         data = r.json()
     except Exception:  # noqa: BLE001  (github returns SSE frames)
