@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
@@ -15,6 +16,8 @@ import mcp_client
 import store
 from agent_card import AUTH_URL  # noqa: F401  (keeps import graph explicit)
 from auth import AUDIENCE, ISSUER, JWKS_URL, current_claims
+
+log = logging.getLogger("uvicorn.error")
 
 
 def _pick_tool(text: str) -> tuple[str, dict]:
@@ -117,6 +120,10 @@ class GitHubAgentExecutor(AgentExecutor):
 
         err = result.get("error")
         rejected = isinstance(err, str) and err.startswith("MCP rejected the token")
+        # The MCP server's own reason, shown in the game and the log.
+        why = " ".join(x for x in (result.get("www_authenticate"), result.get("body")) if x) if err else ""
+        if err:
+            log.warning("MCP tool %s failed for sub %s: %s | %s", tool, sub, err, why or "(no details)")
         await events.forward(sub, events.make(
             "mcp.result", leg="MCP", kind="result", src="mcp", dst="repo_agent",
             note=("The MCP server checks the GitHub token and runs the tool. Treasure!"
@@ -124,13 +131,13 @@ class GitHubAgentExecutor(AgentExecutor):
                   "The MCP server refused the stored GitHub token (401). It may be revoked or "
                   "expired. The repository agent deletes it and asks the user for consent again."
                   if rejected else f"The MCP server refused: {result['error']}"),
-            http={"status": 401 if rejected else (502 if "error" in result else 200), "body": ""},
+            http={"status": 401 if rejected else (502 if "error" in result else 200), "body": why},
             data={"ok": "error" not in result, "preview": json.dumps(result)[:800]}))
 
         if rejected:
             store.delete_token(sub)
             trace.add(sub, "MCP GitHub token (repository agent -> MCP server)", gh["access_token"],
-                      note="MCP returned 401. Stored GitHub token deleted.", ok=False)
+                      note=f"MCP returned 401. Stored GitHub token deleted. {why}".strip(), ok=False)
             await _ask_for_consent(updater, sub, "The old GitHub token no longer works.")
             return
 

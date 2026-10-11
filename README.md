@@ -88,9 +88,9 @@ Then:
 
 Open http://localhost:9001/arcade for the same flow as a pixel-art game.
 Students log in, ask, and watch each real step play out on a small town map:
-Keycloak's castle, the ORCHESTRATOR keep (orchestrator agent), the gate in
-front of the REPO AGENT tower (repository agent, four check lamps, one per
-middleware check), the MCP vault, and GitHub's login server.
+Keycloak's castle, the ORCHESTRATOR keep (orchestrator agent), the AUTH
+CHECKPOINT in front of the REPO AGENT tower (repository agent: a barrier arm
+and four lamps, TOKEN, SIGN, CALLER and SCOPE, one per middleware check), the MCP vault, and GitHub's login server.
 
 GitHub's login server has its own building on purpose. It is where the user
 logs in to GitHub and agrees, and it is the only place GitHub tokens come
@@ -100,9 +100,10 @@ mock mode `mockmcp` plays both the MCP server and GitHub's login server, and
 the game says so.
 
 - Log in as **alice** and ask: login, role check, token exchange, the four
-  gate checks, the GitHub consent bonus stage (first time only), then the
+  checkpoint lamps go green and the barrier lifts, the GitHub consent bonus stage (first time only), then the
   vault opens. **STAGE CLEAR.**
-- Log in as **bob** and ask: gates 1 to 3 pass, gate 4 (`scope`) fails.
+- Log in as **bob** and ask: checks 1 to 3 pass, check 4 (SCOPE) fails
+  and the barrier stays down.
   **GAME OVER** with the repository agent's real `403 missing scope github.act`.
 
 The game pauses after each step. Press **Space** or **NEXT** to go on, or turn
@@ -121,7 +122,7 @@ flow does not depend on them.
 |------|---------------|
 | `common/common/events.py` | event shape, the in-memory bus, the repository agent's `forward()` |
 | `orchestrator/main.py` | `/arcade`, `/events`, `/events/ingest`, and the H2A/A2A emit points |
-| `repo-agent/auth.py` | one event per gate check |
+| `repo-agent/auth.py` | one event per checkpoint check |
 | `repo-agent/github_oauth.py`, `repo-agent/executor.py` | consent and MCP events |
 | `orchestrator/static/arcade/` | the page: Phaser 3 from a CDN, no build step |
 
