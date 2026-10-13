@@ -84,9 +84,16 @@ Then:
    agent's is a real A2A card (`securitySchemes`, `skills`). The orchestrator
    agent's is a plain JSON doc for comparison - it is not an A2A server in this demo, its `/ask` endpoint is plain REST.
 
+What you see right after logging in as alice: the token trace has one row, the
+H2A user token that Keycloak issued.
+
+![Auth demo: alice logged in, with the token trace](docs/images/auth-demo.png)
+
 ## Auth Arcade: watch it as an 8-bit game
 
 Open http://localhost:9001/arcade for the same flow as a pixel-art game.
+
+![Auth Arcade: the 8-bit town map](docs/images/auth-arcade.png)
 Students log in, ask, and watch each real step play out on a small town map:
 Keycloak's castle, the ORCHESTRATOR keep (orchestrator agent), the AUTH
 CHECKPOINT in front of the REPO AGENT tower (repository agent: a barrier arm
